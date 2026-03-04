@@ -1,0 +1,75 @@
+# Dependencies
+node_modules/
+.next/
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+venv2/
+.venv/
+env/
+
+# Environment
+.env
+.env.*
+
+# Logs
+*.log
+backend_error.log
+dev_error_log.txt
+script_output.log
+uvicorn.log
+
+# OS
+.DS_Store
+.cursor/
+
+# Secrets and Auth
+.avengers/auth-tokens.json
+.mcp.json
+.claude/settings.local.json
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Debug files
+debug_request_*.json
+
+# Subtitle output files
+*.srt
+
+# Media
+*.mp4
+
+# PM2 state files
+pm2_*.txt
+pm2_*.json
+pm2_stat.txt
+
+# Job state
+jobs_backup.json
+jobs_state.json
+
+# Storage and training
+backend/storage/
+backend/training_data/
+backend/logs/
+
+# Build info
+tsconfig.tsbuildinfo
+
+# Misc
+nul
+
+# Internal folders
+_backup_*/
+.avengers/
+.context/
+.claude/
+build_log.txt
+logs/

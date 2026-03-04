@@ -1,0 +1,49 @@
+{
+  "name": "rename",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3033",
+    "build": "next build",
+    "start": "next start -p 3033",
+    "lint": "next lint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@google/genai": "^1.40.0",
+    "better-sqlite3": "^12.6.2",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.1",
+    "hls.js": "^1.6.15",
+    "lucide-react": "^0.563.0",
+    "next": "^16.1.6",
+    "next-themes": "^0.4.6",
+    "parse-torrent-title": "^2.1.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.4.0",
+    "uuid": "^13.0.0",
+    "wikipedia": "^2.4.2",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.2.3",
+    "@types/react": "^19.2.13",
+    "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^10.0.0",
+    "drizzle-kit": "^0.31.9",
+    "eslint": "^9.39.2",
+    "eslint-config-next": "^16.1.6",
+    "playwright": "^1.58.2",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3"
+  }
+}

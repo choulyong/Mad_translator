@@ -1,0 +1,135 @@
+version: "1.0"
+description: "Zootopia 2 감정/톤 마커 시스템"
+lastUpdated: "2026-02-22"
+
+# 감정 분류 규칙
+emotion_classes:
+  HARSH:
+    description: "강렬한 감정 (화남, 강조)"
+    markers: ["!", "!?", "!!", "...!", "!!"]
+    keywords: ["never", "always", "must", "definitely", "absolutely", "no way"]
+    translation_style: "강렬하고 단호한 톤"
+    example_ko: "절대 안 돼!"
+    apply_emphasis: true
+
+  REJECTION:
+    description: "거부감, 역겨움"
+    markers: ["Bleh", "Ugh", "Ack", "Eww", "Yuck", "Gross"]
+    keywords: ["disgusting", "gross", "yuck", "ugh", "bleh"]
+    translation_style: "거부감 있는 표현"
+    example_ko: "아, 역겨워!"
+    apply_phonetics: true
+
+  SARCASM:
+    description: "빗댓글, 조롱"
+    markers: ["really?", "sure", "right", "obviously", "yeah right"]
+    keywords: ["right", "sure", "yeah", "obviously", "wonderful"]
+    translation_style: "반어적, 냉소적 톤"
+    example_ko: "정말 그럴 것 같은데?"
+    apply_irony: true
+
+  SADNESS:
+    description: "슬픔, 침묵의 순간"
+    markers: ["...", "…", "[silence]", "[long pause]"]
+    keywords: ["sorry", "sad", "unhappy", "lonely", "miss", "gone"]
+    translation_style: "잔잔하고 슬픈 톤"
+    example_ko: "...정말..."
+    apply_pause: true
+
+  CONFUSION:
+    description: "혼란, 의문"
+    markers: ["?", "??", "...?", "what?"]
+    keywords: ["what", "huh", "confused", "understand", "mean"]
+    translation_style: "의아해하고 혼란스러운 톤"
+    example_ko: "뭐라고?"
+    apply_hesitation: true
+
+  JOY:
+    description: "기쁨, 흥분"
+    markers: ["!", "yeah!", "great!", "awesome!", "yes!"]
+    keywords: ["happy", "great", "wonderful", "love", "fantastic", "amazing"]
+    translation_style: "밝고 긍정적인 톤"
+    example_ko: "정말 좋아!"
+    apply_warmth: true
+
+  SUSPICION:
+    description: "의심, 경계"
+    markers: ["hmm", "huh", "hmm...", "wait"]
+    keywords: ["suspicious", "doubt", "strange", "weird", "odd"]
+    translation_style: "조심스럽고 의심스러운 톤"
+    example_ko: "뭔가 수상한데..."
+    apply_caution: true
+
+  URGENCY:
+    description: "긴급성, 위기감"
+    markers: ["!", "now!", "hurry!", "quick!", "run!"]
+    keywords: ["urgent", "emergency", "hurry", "quickly", "now", "danger"]
+    translation_style: "긴급하고 다급한 톤"
+    example_ko: "빨리 가야 돼!"
+    apply_speed: true
+
+# 캐릭터별 감정 표현 규칙
+character_emotions:
+  Judy:
+    primary_emotions: ["JOY", "CONFUSION", "SADNESS"]
+    typical_patterns:
+      - emotion: "JOY"
+        korean_marker: "요"
+        expression: "긍정적, 신입다운 표현"
+      - emotion: "CONFUSION"
+        korean_marker: "?"
+        expression: "조심스러운 질문"
+      - emotion: "SADNESS"
+        korean_marker: "..."
+        expression: "미안함, 걱정"
+
+  Nick:
+    primary_emotions: ["SARCASM", "SUSPICION", "JOY"]
+    typical_patterns:
+      - emotion: "SARCASM"
+        korean_marker: "~지?"
+        expression: "능글맞은 톤, 재치"
+      - emotion: "SUSPICION"
+        korean_marker: "~네"
+        expression: "경계심 있는 태도"
+      - emotion: "JOY"
+        korean_marker: "~야"
+        expression: "편한 느낌의 기쁨"
+
+  Bellwether:
+    primary_emotions: ["HARSH", "SUSPICION", "JOY"]
+    typical_patterns:
+      - emotion: "HARSH"
+        korean_marker: "~할 거야"
+        expression: "위협적, 강압적"
+      - emotion: "SUSPICION"
+        korean_marker: "~지"
+        expression: "계산된 의심"
+      - emotion: "JOY"
+        korean_marker: "~하겠습니다"
+        expression: "거짓된 밝음"
+
+# 마커 탐지 규칙
+detection_rules:
+  punctuation_weight: 0.3
+  keyword_weight: 0.5
+  context_weight: 0.2
+  threshold: 0.6  # 60% 이상일 때 마커 적용
+
+# 프롬프트 템플릿
+prompt_templates:
+  HARSH: "이 문장은 강렬한 감정을 담고 있습니다. 한국어로는 더 단호하고 직설적으로 표현하세요."
+  REJECTION: "이 문장은 거부감이나 역겨움을 표현합니다. 한국어 의성어나 감탄사를 사용하여 그 감정을 살려내세요."
+  SARCASM: "이 문장은 빗댓글이나 조롱입니다. 한국어로는 반어적이고 냉소적인 톤을 유지하세요."
+  SADNESS: "이 문장은 슬픔이나 침묵의 순간입니다. 한국어로는 잔잔하고 가슴 아픈 톤을 살려내세요."
+  CONFUSION: "이 문장은 의문이나 혼란을 표현합니다. 한국어로는 의아해하고 헷갈리는 톤을 전달하세요."
+  JOY: "이 문장은 기쁨이나 흥분을 담고 있습니다. 한국어로는 밝고 긍정적으로 표현하세요."
+  SUSPICION: "이 문장은 의심이나 경계를 표현합니다. 한국어로는 조심스럽고 의심스러운 톤을 유지하세요."
+  URGENCY: "이 문장은 긴급성이나 위기감을 담고 있습니다. 한국어로는 빠르고 다급한 느낌을 전달하세요."
+
+# 통계
+statistics:
+  total_emotion_classes: 8
+  character_profiles: 3
+  detection_rules: 5
+  quality_score: 90

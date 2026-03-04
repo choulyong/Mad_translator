@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html class="dark" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>영화 리네이머 설정 (국문)</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#17cf5a",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "zinc-850": "#1f3326", 
+                        "zinc-900": "#162b1e", 
+                        "zinc-700": "#2d4a38", 
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<style>
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #112117; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2d4a38; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3e614d; 
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-gray-800 dark:text-gray-200 antialiased h-screen flex overflow-hidden selection:bg-primary selection:text-white">
+<aside class="w-64 bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-700 flex flex-col justify-between flex-shrink-0 z-20">
+<div>
+<div class="h-16 flex items-center px-6 border-b border-gray-200 dark:border-zinc-700">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
+<span class="material-icons-round text-xl">movie_filter</span>
+</div>
+<span class="font-bold text-lg tracking-tight text-gray-900 dark:text-white">Renamer</span>
+</div>
+</div>
+<nav class="p-4 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-850 hover:text-gray-900 dark:hover:text-white transition-colors" href="#">
+<span class="material-icons-round text-[20px]">dashboard</span>
+<span class="font-medium text-sm">대시보드</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-850 hover:text-gray-900 dark:hover:text-white transition-colors" href="#">
+<span class="material-icons-round text-[20px]">drive_file_rename_outline</span>
+<span class="font-medium text-sm">이름 변경</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/10 text-primary transition-colors" href="#">
+<span class="material-icons-round text-[20px]">settings</span>
+<span class="font-medium text-sm">설정</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-850 hover:text-gray-900 dark:hover:text-white transition-colors" href="#">
+<span class="material-icons-round text-[20px]">history</span>
+<span class="font-medium text-sm">로그</span>
+</a>
+</nav>
+</div>
+<div class="p-4 border-t border-gray-200 dark:border-zinc-700">
+<button class="flex items-center gap-3 px-4 py-3 w-full rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-850 transition-colors text-left">
+<div class="w-8 h-8 rounded-full bg-gray-200 dark:bg-zinc-700 flex items-center justify-center">
+<span class="material-icons-round text-gray-500 dark:text-gray-400 text-sm">person</span>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-medium text-gray-900 dark:text-white truncate">관리자</p>
+<p class="text-xs text-gray-500 dark:text-gray-400 truncate">프로 라이선스</p>
+</div>
+</button>
+</div>
+</aside>
+<main class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+<header class="h-16 flex items-center justify-between px-8 border-b border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">
+<div>
+<h1 class="text-xl font-semibold text-gray-900 dark:text-white">설정 및 상태</h1>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">애플리케이션 설정을 관리하고 시스템 상태를 확인하세요.</p>
+</div>
+<div class="flex items-center gap-3">
+<button class="p-2 rounded-full text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-zinc-850 dark:hover:text-gray-300 transition-colors relative">
+<span class="material-icons-round text-[22px]">notifications</span>
+<span class="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-primary border-2 border-white dark:border-zinc-900"></span>
+</button>
+<button class="p-2 rounded-full text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-zinc-850 dark:hover:text-gray-300 transition-colors">
+<span class="material-icons-round text-[22px]">help_outline</span>
+</button>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto p-8">
+<div class="max-w-6xl mx-auto space-y-8">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<div class="bg-white dark:bg-zinc-850 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-sm overflow-hidden flex flex-col h-full">
+<div class="px-6 py-5 border-b border-gray-200 dark:border-zinc-700 flex justify-between items-center bg-gray-50 dark:bg-zinc-900/50">
+<h3 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+<span class="material-icons-round text-primary text-lg">api</span>
+                            API 설정
+                        </h3>
+<button class="text-xs text-primary font-medium hover:text-green-400 transition-colors">편집</button>
+</div>
+<div class="p-6 flex-1 space-y-6">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+<svg class="w-6 h-6 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 18V6h16v12H4z"></path></svg>
+</div>
+<div>
+<p class="text-sm font-medium text-gray-900 dark:text-gray-100">TMDB API</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">영화 메타데이터 소스</p>
+</div>
+</div>
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/20 text-primary border border-primary/20">
+<span class="w-1.5 h-1.5 mr-1.5 rounded-full bg-primary"></span>
+                                연결됨
+                            </span>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-gray-500/10 flex items-center justify-center">
+<svg class="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0014.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"></path></svg>
+</div>
+<div>
+<p class="text-sm font-medium text-gray-900 dark:text-gray-100">Google Translate</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">자동 번역</p>
+</div>
+</div>
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-zinc-600">
+                                설정 안됨
+                            </span>
+</div>
+</div>
+</div>
+<div class="bg-white dark:bg-zinc-850 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-sm overflow-hidden flex flex-col h-full">
+<div class="px-6 py-5 border-b border-gray-200 dark:border-zinc-700 flex justify-between items-center bg-gray-50 dark:bg-zinc-900/50">
+<h3 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+<span class="material-icons-round text-primary text-lg">storage</span>
+                            데이터베이스
+                        </h3>
+<button class="text-xs text-primary font-medium hover:text-green-400 transition-colors">관리</button>
+</div>
+<div class="p-6 flex-1 flex flex-col justify-center">
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-background-light dark:bg-zinc-900/50 rounded-lg p-4 border border-gray-100 dark:border-zinc-700/50">
+<p class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium mb-1">SQLite 상태</p>
+<div class="flex items-center gap-2">
+<span class="relative flex h-3 w-3">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+</span>
+<span class="text-lg font-bold text-gray-900 dark:text-white">활성</span>
+</div>
+</div>
+<div class="bg-background-light dark:bg-zinc-900/50 rounded-lg p-4 border border-gray-100 dark:border-zinc-700/50">
+<p class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium mb-1">총 영화 수</p>
+<div class="flex items-center gap-2">
+<span class="material-icons-round text-gray-400 text-sm">movie</span>
+<span class="text-lg font-bold text-gray-900 dark:text-white">24</span>
+</div>
+</div>
+</div>
+<div class="mt-6">
+<div class="w-full bg-gray-200 dark:bg-zinc-700 rounded-full h-1.5 mb-2">
+<div class="bg-primary h-1.5 rounded-full" style="width: 15%"></div>
+</div>
+<div class="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+<span>사용 중인 용량</span>
+<span>14.2 MB / 1 GB</span>
+</div>
+</div>
+</div>
+</div>
+<div class="bg-white dark:bg-zinc-850 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-sm overflow-hidden flex flex-col h-full">
+<div class="px-6 py-5 border-b border-gray-200 dark:border-zinc-700 flex justify-between items-center bg-gray-50 dark:bg-zinc-900/50">
+<h3 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+<span class="material-icons-round text-primary text-lg">info</span>
+                            정보
+                        </h3>
+</div>
+<div class="p-6 flex-1 flex flex-col items-center text-center justify-center">
+<div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-green-700 flex items-center justify-center mb-4 shadow-lg shadow-primary/20">
+<span class="material-icons-round text-white text-3xl">movie_filter</span>
+</div>
+<h4 class="text-lg font-bold text-gray-900 dark:text-white mb-1">Movie Renamer</h4>
+<p class="text-sm text-gray-500 dark:text-gray-400 mb-6">버전 1.0.2</p>
+<p class="text-sm text-gray-600 dark:text-gray-300 mb-6 max-w-[200px]">
+                            영화 컬렉션을 자동으로 정리해주는 간단하고 강력한 도구입니다.
+                        </p>
+<button class="w-full py-2 px-4 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700 transition-colors">
+                            업데이트 확인
+                        </button>
+</div>
+</div>
+</div>
+<div class="mt-8">
+<h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">이름 지정 형식</h2>
+<div class="bg-white dark:bg-zinc-850 border border-gray-200 dark:border-zinc-700 rounded-xl p-6">
+<div class="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+<div>
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">패턴</label>
+<div class="font-mono text-sm bg-gray-100 dark:bg-zinc-900 px-3 py-2 rounded border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400">
+                                {Title} ({Year}).{Ext}
+                            </div>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+<span class="material-icons-round text-base">preview</span>
+<span>미리보기: <span class="text-gray-900 dark:text-white font-medium">인셉션 (2010).mkv</span></span>
+</div>
+<button class="text-sm text-primary font-medium hover:underline ml-4">구성</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="absolute bottom-6 right-6 z-50 animate-[slideIn_0.3s_ease-out]">
+<div class="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-black/50 rounded-xl p-4 flex items-center gap-4 min-w-[320px]">
+<div class="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white">
+<span class="material-icons-round text-lg">check</span>
+</div>
+<div class="flex-1">
+<p class="text-sm font-semibold text-gray-900 dark:text-white">이름 변경 완료</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">파일 이름 변경 완료</p>
+</div>
+<button class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 transition-colors">
+<span class="material-icons-round text-lg">close</span>
+</button>
+</div>
+</div>
+</main>
+<style>
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+
+</body></html>

@@ -1,0 +1,1473 @@
+import os
+import re
+import json
+import traceback
+from datetime import datetime
+from pathlib import Path
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import List, Optional
+from app.core.logic_gate import LogicGate
+from app.core.diagnostic import DiagnosticEngine
+from app.services.vertex_ai import VertexTranslator
+from app.services.speaker_identifier import (
+    SPEAKER_ID_SYSTEM_PROMPT,
+    RELATIONSHIP_SYSTEM_PROMPT,
+    build_speaker_id_prompt,
+    build_relationship_prompt,
+    parse_speaker_response,
+    parse_relationship_response,
+)
+from app.core.translation_quality_checker import (
+    check_translation_quality,
+    auto_fix_subtitles,
+    get_retranslation_targets,
+    TranslationQualityChecker
+)
+
+# 번역 파일 저장 경로
+STORAGE_PATH = Path(__file__).parent.parent.parent / "storage" / "translations"
+STORAGE_PATH.mkdir(parents=True, exist_ok=True)
+
+
+def _sanitize_json(json_str: str) -> str:
+    """
+    JSON 문자열 정제 - 아포스트로피 보존!
+    """
+    result = json_str
+
+    # 제어 문자 처리: JSON 문자열 값 안의 이스케이프 안 된 제어 문자를 이스케이프
+    # (Invalid control character 에러 방지)
+    def _escape_control_chars_in_strings(s: str) -> str:
+        """JSON 문자열 값 내부의 제어 문자를 이스케이프"""
+        out = []
+        in_string = False
+        escape_next = False
+        for ch in s:
+            if escape_next:
+                out.append(ch)
+                escape_next = False
+                continue
+            if ch == '\\' and in_string:
+                out.append(ch)
+                escape_next = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                out.append(ch)
+                continue
+            if in_string and ord(ch) < 0x20:
+                # 제어 문자를 적절히 이스케이프
+                if ch == '\n':
+                    out.append('\\n')
+                elif ch == '\r':
+                    out.append('\\r')
+                elif ch == '\t':
+                    out.append('\\t')
+                else:
+                    out.append(f'\\u{ord(ch):04x}')
+                continue
+            out.append(ch)
+        return ''.join(out)
+
+    result = _escape_control_chars_in_strings(result)
+
+    # 후행 쉼표 제거
+    result = re.sub(r',\s*}', '}', result)
+    result = re.sub(r',\s*]', ']', result)
+
+    # 인용되지 않은 키만 수정 (텍스트 값은 건드리지 않음)
+    result = re.sub(r'([{\[,]\s*)(\w+)(\s*:)', r'\1"\2"\3', result)
+
+    # 이중 따옴표 수정
+    result = result.replace('""', '"')
+
+    # 주의: .replace(/'/g, '"') 는 아포스트로피를 손상시키므로 사용하지 않음!
+
+    return result
+
+
+def _parse_translation_response(raw_content: str, original_blocks: list) -> list:
+    """
+    번역 응답 파싱 - 다중 폴백 전략
+    Returns: list of {index: int, text: str}
+    """
+    if not raw_content:
+        print("[WARN] Empty raw_content received")
+        return []
+
+    # 마크다운 정리
+    content = raw_content.replace("```json", "").replace("```", "").strip()
+
+    # JSON 배열 찾기
+    json_start = content.find('[')
+    json_end = content.rfind(']')
+
+    if json_start == -1:
+        print("[WARN] No JSON array found in response")
+        return []
+
+    # 잘림 처리
+    if json_end == -1 or json_end < json_start:
+        print("[WARN] JSON appears truncated, attempting recovery...")
+        content = content[json_start:]
+
+        # 마지막 완전한 객체 찾기
+        last_complete = content.rfind('"}')
+        if last_complete > 0:
+            content = content[:last_complete + 2] + ']'
+            print(f"[INFO] Recovered truncated JSON, length: {len(content)}")
+        else:
+            print("[ERROR] Could not recover truncated JSON")
+            return []
+    else:
+        content = content[json_start:json_end + 1]
+
+    # 파싱 시도 1: 직접 파싱
+    try:
+        translations = json.loads(content)
+        print(f"[DEBUG] Direct JSON parse successful: {len(translations)} items")
+    except json.JSONDecodeError as e:
+        print(f"[WARN] Direct parse failed: {e}, trying sanitization...")
+
+        # 파싱 시도 2: 정제 후 재시도 (제어 문자 이스케이프 포함)
+        try:
+            sanitized = _sanitize_json(content)
+            translations = json.loads(sanitized)
+            print(f"[DEBUG] Sanitized JSON parse successful: {len(translations)} items")
+        except json.JSONDecodeError as e2:
+            print(f"[WARN] Sanitized parse also failed: {e2}, trying strict=False...")
+
+            # 파싱 시도 3: strict=False (제어 문자 허용)
+            try:
+                decoder = json.JSONDecoder(strict=False)
+                translations, _ = decoder.raw_decode(content)
+                if not isinstance(translations, list):
+                    translations = [translations]
+                print(f"[DEBUG] strict=False parse successful: {len(translations)} items")
+            except (json.JSONDecodeError, ValueError) as e3:
+                print(f"[WARN] strict=False parse failed: {e3}, trying truncation recovery...")
+
+                # 파싱 시도 4: 잘림 복구
+                try:
+                    last_obj = content.rfind('"}')
+                    if last_obj > 0:
+                        recovered = content[:last_obj + 2] + ']'
+                        sanitized_recovered = _sanitize_json(recovered)
+                        translations = json.loads(sanitized_recovered)
+                        print(f"[DEBUG] Recovery parse successful: {len(translations)} items")
+                    else:
+                        print("[ERROR] All JSON parsing attempts failed")
+                        return []
+                except json.JSONDecodeError:
+                    # 최종 시도: strict=False + 잘림 복구
+                    try:
+                        if last_obj > 0:
+                            recovered = content[:last_obj + 2] + ']'
+                            decoder2 = json.JSONDecoder(strict=False)
+                            translations, _ = decoder2.raw_decode(recovered)
+                            if not isinstance(translations, list):
+                                translations = [translations]
+                            print(f"[DEBUG] Recovery+strict=False parse successful: {len(translations)} items")
+                        else:
+                            print("[ERROR] All JSON parsing attempts failed")
+                            return []
+                    except (json.JSONDecodeError, ValueError):
+                        print("[ERROR] All JSON parsing attempts failed (including strict=False recovery)")
+                        return []
+
+    # 결과 정규화 — Gemini가 {index,text} 또는 {id,ko} 형식으로 응답
+    result = []
+    for trans in translations:
+        if not isinstance(trans, dict):
+            continue
+        text_val = trans.get("text") or trans.get("ko") or trans.get("translated") or ""
+        idx = trans.get("index") or trans.get("id")
+        if text_val and idx is not None:
+            result.append({
+                "index": idx,
+                "text": text_val
+            })
+
+    return result
+
+router = APIRouter()
+logic_gate = LogicGate()
+diagnostic = DiagnosticEngine()
+
+# Vertex AI 클라이언트 (환경변수에서 자동 로드)
+# 초기화 지연 - 실제 API 호출 시점에 생성
+vertex_ai = None
+
+def get_vertex_ai():
+    global vertex_ai
+    if vertex_ai is None:
+        vertex_ai = VertexTranslator()
+    return vertex_ai
+
+class SubtitleBlock(BaseModel):
+    index: int
+    start: str
+    end: str
+    text: str
+    # V3: 화자 식별 + CPS
+    speaker: Optional[str] = None
+    addressee: Optional[str] = None
+    duration_sec: Optional[float] = None
+    max_chars: Optional[int] = None
+    cps_warning: Optional[str] = None
+
+class PrevContextItem(BaseModel):
+    index: int
+    original: str
+    translated: str
+
+class TranslationRequest(BaseModel):
+    blocks: List[SubtitleBlock]
+    # 영화 정보
+    title: Optional[str] = ""
+    synopsis: Optional[str] = ""
+    genre: str
+    # 캐릭터 및 번역 컨텍스트
+    personas: str
+    fixed_terms: Optional[str] = ""  # 고정 용어 (원어 → 번역)
+    translation_rules: Optional[str] = ""  # 번역 규칙
+    target_lang: str = "ko"
+    prev_context: Optional[List[PrevContextItem]] = None  # 이전 배치 컨텍스트
+    # 화자 식별 기반 말투 일관성 데이터
+    character_relations: Optional[dict] = None
+    confirmed_speech_levels: Optional[dict] = None
+    # V3: 톤 메모리 + 배치 무드 + 연령 등급
+    tone_memory: Optional[List[dict]] = None
+    batch_mood: Optional[str] = None
+    content_rating: Optional[str] = None
+
+@router.post("/diagnostic")
+async def run_diagnostic(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        srt_text = content.decode("utf-8")
+        report_text = diagnostic.generate_engineering_report(srt_text)
+        
+        # 상세 데이터 추출 루틴
+        blocks = logic_gate.bit_level_mirroring(srt_text)
+        
+        return {
+            "status": "success",
+            "report": report_text,
+            "blocks": blocks,
+            "stats": {
+                "total_count": len(blocks),
+                "complexity": diagnostic.linguistic_profiling(srt_text)["complexity_score"]
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Diagnostic failed: {str(e)}")
+
+@router.post("/batch-translate")
+async def translate_subtitles(request: TranslationRequest):
+    """
+    📽️ Core Execution: 배치 번역 (프론트엔드에서 배치 단위로 호출)
+
+    Returns structured response with error handling and parsed translations.
+    """
+    print(f"[Backend] Translating {len(request.blocks)} blocks for '{request.title}'")
+
+    context_info = {
+        # 영화 정보
+        "title": request.title,
+        "synopsis": request.synopsis,
+        "genre": request.genre,
+        # 캐릭터 및 번역 컨텍스트
+        "personas": request.personas,
+        "fixed_terms": request.fixed_terms,
+        "translation_rules": request.translation_rules,
+        # 이전 번역 컨텍스트
+        "prev_context": [p.dict() for p in request.prev_context] if request.prev_context else [],
+        # 화자 식별 기반 말투 일관성
+        "character_relations": request.character_relations or {},
+        "confirmed_speech_levels": request.confirmed_speech_levels or {},
+        # V3: 톤 메모리 + 배치 무드 + 연령 등급
+        "tone_memory": request.tone_memory or [],
+        "batch_mood": request.batch_mood or "",
+        "content_rating": request.content_rating or "",
+    }
+
+    # Pydantic 모델을 dict 리스트로 변환
+    batch_dicts = [b.dict() for b in request.blocks]
+
+    try:
+        # Vertex AI 호출 (재시도 로직 포함)
+        result = await get_vertex_ai().translate_batch(batch_dicts, context_info)
+
+        # 에러 체크
+        if not result.get("success"):
+            print(f"[ERROR] Translation failed: {result.get('error')}")
+            return {
+                "status": "error",
+                "error": result.get("error", "Unknown error"),
+                "total_batches": 1,
+                "data": []
+            }
+
+        # 원시 응답에서 파싱
+        raw_content = result.get("data", "")
+        parsed_translations = _parse_translation_response(raw_content, batch_dicts)
+
+        # 🔧 자동 후처리: 슬래시 줄바꿈 변환
+        slash_fixed_count = 0
+        for trans in parsed_translations:
+            if trans.get("text") and " / " in trans["text"]:
+                trans["text"] = trans["text"].replace(" / ", "\n")
+                slash_fixed_count += 1
+
+        print(f"[Backend] Parsed {len(parsed_translations)} translations (slash fixed: {slash_fixed_count})")
+
+        # 품질 검증 (non-fatal)
+        quality_summary = None
+        try:
+            quality_subs = []
+            for block in batch_dicts:
+                trans_text = ""
+                for t in parsed_translations:
+                    if t.get("index") == block["index"]:
+                        trans_text = t.get("text", "")
+                        break
+                quality_subs.append({"id": block["index"], "en": block["text"], "ko": trans_text})
+
+            checker = TranslationQualityChecker()
+            report = checker.check_quality(quality_subs)
+
+            # 슬래시 오류 자동 수정
+            if report.slash_errors:
+                fixed_subs, fix_count = checker.auto_fix_slash_errors(quality_subs)
+                for fs in fixed_subs:
+                    for t in parsed_translations:
+                        if t.get("index") == fs["id"] and fs["ko"] != t.get("text"):
+                            t["text"] = fs["ko"]
+
+            quality_summary = {
+                "untranslated_count": len(report.untranslated_lines),
+                "untranslated_indices": [i.line_number for i in report.untranslated_lines],
+                "translation_smell_count": len(report.translation_smell),
+            }
+        except Exception as qe:
+            print(f"[WARN] Quality check failed (non-fatal): {qe}")
+            quality_summary = {"error": str(qe)}
+
+        return {
+            "status": "complete",
+            "total_batches": 1,
+            "truncated": result.get("truncated", False),
+            "expected_count": len(batch_dicts),
+            "received_count": len(parsed_translations),
+            "quality": quality_summary,
+            "data": [{
+                "batch_index": 0,
+                "content": parsed_translations,  # 파싱된 배열 반환
+                "raw_content": raw_content  # 디버깅용 원시 데이터
+            }]
+        }
+
+    except Exception as e:
+        print(f"[ERROR] Batch translation exception: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 화자 식별 API
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SpeakerIdBlock(BaseModel):
+    index: int
+    start: str
+    end: str
+    text: str
+
+class SpeakerIdRequest(BaseModel):
+    blocks: List[SpeakerIdBlock]
+    title: str = ""
+    synopsis: str = ""
+    genre: str = ""
+    personas: str = ""
+    prev_identified: Optional[List[dict]] = None
+    generate_relationships: bool = False
+    all_speakers: Optional[List[str]] = None
+    dialogue_samples: Optional[dict] = None
+
+
+@router.post("/identify-speakers")
+async def identify_speakers(request: SpeakerIdRequest):
+    """
+    🎭 화자 식별 — 자막 블록별 화자를 Gemini로 식별
+    선택적으로 관계 매트릭스도 함께 생성
+    """
+    print(f"[Speaker-ID] Identifying speakers for {len(request.blocks)} blocks (title: '{request.title}')")
+
+    user_prompt = build_speaker_id_prompt(
+        blocks=[b.dict() for b in request.blocks],
+        title=request.title,
+        synopsis=request.synopsis,
+        genre=request.genre,
+        personas=request.personas,
+        prev_identified=request.prev_identified,
+    )
+
+    try:
+        translator = get_vertex_ai()
+
+        def make_speaker_call(attempt=0, max_retries=3):
+            return translator.client.models.generate_content(
+                model=translator.model,
+                contents=user_prompt,
+                config={
+                    "system_instruction": SPEAKER_ID_SYSTEM_PROMPT,
+                    "max_output_tokens": 16384,
+                    "temperature": 0.1,
+                    "thinking_config": {"thinking_budget": 1024},
+                }
+            )
+
+        response, error = translator._retry_with_backoff(make_speaker_call)
+
+        if error:
+            print(f"[Speaker-ID ERROR] API call failed: {error}")
+            return {"status": "error", "error": error, "speakers": [], "relationships": {}}
+
+        raw_content = response.text
+        speakers = parse_speaker_response(raw_content)
+
+        print(f"[Speaker-ID] Identified {len(speakers)} blocks")
+
+        # 관계 매트릭스 생성 (요청 시)
+        relationships = {}
+        if request.generate_relationships and request.all_speakers and len(request.all_speakers) >= 2:
+            rel_prompt = build_relationship_prompt(
+                speakers=request.all_speakers,
+                dialogue_samples=request.dialogue_samples or {},
+                title=request.title,
+                synopsis=request.synopsis,
+                personas=request.personas,
+            )
+
+            def make_rel_call(attempt=0, max_retries=3):
+                return translator.client.models.generate_content(
+                    model=translator.model,
+                    contents=rel_prompt,
+                    config={
+                        "system_instruction": RELATIONSHIP_SYSTEM_PROMPT,
+                        "max_output_tokens": 8192,
+                        "temperature": 0.1,
+                        "thinking_config": {"thinking_budget": 1024},
+                    }
+                )
+
+            rel_response, rel_error = translator._retry_with_backoff(make_rel_call)
+
+            if not rel_error and rel_response:
+                relationships = parse_relationship_response(rel_response.text)
+                print(f"[Speaker-ID] Generated {len(relationships)} relationship pairs")
+            else:
+                print(f"[Speaker-ID WARN] Relationship generation failed: {rel_error}")
+
+        return {
+            "status": "complete",
+            "speakers": speakers,
+            "relationships": relationships,
+        }
+
+    except Exception as e:
+        print(f"[Speaker-ID ERROR] Exception: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        return {"status": "error", "error": str(e), "speakers": [], "relationships": {}}
+
+
+class TranslatedSubtitle(BaseModel):
+    id: int
+    start: str
+    end: str
+    en: str
+    ko: str
+
+class SaveTranslationRequest(BaseModel):
+    original_filename: str
+    title: Optional[str] = ""
+    subtitles: List[TranslatedSubtitle]
+
+@router.post("/save-translation")
+async def save_translation(request: SaveTranslationRequest):
+    """
+    번역 완료된 SRT를 서버에 저장
+    """
+    try:
+        # 파일명 생성: 원본파일명_translated_날짜시간.srt
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_name = Path(request.original_filename).stem
+        safe_name = re.sub(r'[<>:"/\\|?*]', '_', base_name)  # 안전한 파일명
+        filename = f"{safe_name}_ko_{timestamp}.srt"
+        filepath = STORAGE_PATH / filename
+
+        # SRT 형식으로 저장
+        srt_content = []
+        for sub in request.subtitles:
+            text = sub.ko if sub.ko and sub.ko.strip() else sub.en
+            srt_content.append(f"{sub.id}\n{sub.start} --> {sub.end}\n{text}\n")
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write("\n".join(srt_content))
+
+        print(f"[OK] Translation saved: {filepath}")
+
+        return {
+            "status": "saved",
+            "filename": filename,
+            "path": str(filepath),
+            "subtitle_count": len(request.subtitles),
+            "translated_count": len([s for s in request.subtitles if s.ko and s.ko.strip()])
+        }
+    except Exception as e:
+        print(f"[ERROR] Save translation failed: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/translations")
+async def list_translations():
+    """
+    저장된 번역 파일 목록
+    """
+    try:
+        files = []
+        for f in STORAGE_PATH.glob("*.srt"):
+            stat = f.stat()
+            files.append({
+                "filename": f.name,
+                "size": stat.st_size,
+                "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+            })
+        # 최신순 정렬
+        files.sort(key=lambda x: x["modified"], reverse=True)
+        return {"translations": files, "count": len(files)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/translations/{filename}")
+async def download_translation(filename: str):
+    """
+    저장된 번역 파일 다운로드
+    """
+    filepath = STORAGE_PATH / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    if not filepath.is_file():
+        raise HTTPException(status_code=400, detail="Invalid file")
+    # 경로 탈출 방지
+    if not str(filepath.resolve()).startswith(str(STORAGE_PATH.resolve())):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return FileResponse(
+        path=filepath,
+        filename=filename,
+        media_type="text/plain; charset=utf-8"
+    )
+
+@router.delete("/translations/{filename}")
+async def delete_translation(filename: str):
+    """
+    저장된 번역 파일 삭제
+    """
+    filepath = STORAGE_PATH / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    # 경로 탈출 방지
+    if not str(filepath.resolve()).startswith(str(STORAGE_PATH.resolve())):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    try:
+        filepath.unlink()
+        return {"status": "deleted", "filename": filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/save")
+async def save_srt(file_path: str, blocks: List[SubtitleBlock]):
+    """Legacy save endpoint - deprecated"""
+    try:
+        final_content = logic_gate.finalize_srt([b.dict() for b in blocks])
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(final_content)
+        return {"status": "saved", "path": file_path}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 품질 검사 API
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class QualityCheckRequest(BaseModel):
+    """품질 검사 요청"""
+    subtitles: List[dict]  # [{"id": 1, "en": "...", "ko": "..."}, ...]
+
+
+class AutoFixRequest(BaseModel):
+    """자동 수정 요청"""
+    subtitles: List[dict]
+    fix_slash_errors: bool = True
+    preserve_music_slash: bool = True
+
+
+@router.post("/quality-check")
+async def quality_check(request: QualityCheckRequest):
+    """
+    🔍 번역 품질 검사
+
+    검사 항목:
+    - 미번역 감지 (영어 잔존)
+    - 슬래시 줄바꿈 오류
+    - 번역투 패턴
+    - 말투 일관성
+    """
+    try:
+        report = check_translation_quality(request.subtitles)
+        return {
+            "status": "complete",
+            "report": report
+        }
+    except Exception as e:
+        print(f"[ERROR] Quality check failed: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/auto-fix")
+async def auto_fix(request: AutoFixRequest):
+    """
+    🔧 자동 수정 적용
+
+    수정 항목:
+    - 슬래시 줄바꿈 오류 → 실제 줄바꿈으로 변환
+    """
+    try:
+        result = auto_fix_subtitles(
+            request.subtitles,
+            fix_options={
+                "slash_errors": request.fix_slash_errors,
+                "preserve_music_slash": request.preserve_music_slash
+            }
+        )
+        return {
+            "status": "complete",
+            "fixed_subtitles": result["fixed_subtitles"],
+            "fixes_applied": result["fixes_applied"]
+        }
+    except Exception as e:
+        print(f"[ERROR] Auto fix failed: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/get-retranslation-targets")
+async def get_retranslation(request: QualityCheckRequest):
+    """
+    🎯 재번역이 필요한 자막 블록 추출
+
+    반환: 미번역된 자막 블록 리스트 (바로 batch-translate에 전달 가능)
+    """
+    try:
+        targets = get_retranslation_targets(request.subtitles)
+        return {
+            "status": "complete",
+            "count": len(targets),
+            "targets": targets
+        }
+    except Exception as e:
+        print(f"[ERROR] Get retranslation targets failed: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 실시간 배치 검증 포함 번역 (향상된 버전)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class BatchTranslateWithValidationRequest(BaseModel):
+    """실시간 검증 포함 배치 번역 요청"""
+    blocks: List[SubtitleBlock]
+    title: str = ""
+    synopsis: str = ""
+    genre: str = "Drama"
+    personas: str = ""
+    fixed_terms: str = ""
+    translation_rules: str = ""
+    target_lang: str = "ko"
+    prev_context: Optional[List[dict]] = []
+    # 검증 옵션
+    auto_retry_untranslated: bool = True  # 미번역 자동 재시도
+    auto_fix_slash: bool = True  # 슬래시 오류 자동 수정
+    max_retries: int = 3  # 최대 재시도 횟수
+
+
+@router.post("/batch-translate-validated")
+async def batch_translate_with_validation(request: BatchTranslateWithValidationRequest):
+    """
+    🚀 실시간 검증 포함 배치 번역
+
+    프로세스:
+    1. 배치 번역 실행
+    2. 번역 결과 품질 검사
+    3. 미번역 있으면 자동 재시도
+    4. 슬래시 오류 자동 수정
+    5. 검증 완료된 결과 반환
+    """
+    print(f"[Backend] Validated translation: {len(request.blocks)} blocks for '{request.title}'")
+
+    context_info = {
+        "title": request.title,
+        "synopsis": request.synopsis,
+        "genre": request.genre,
+        "personas": request.personas,
+        "fixed_terms": request.fixed_terms,
+        "translation_rules": request.translation_rules,
+        "prev_context": request.prev_context or []
+    }
+
+    batch_dicts = [b.dict() for b in request.blocks]
+    checker = TranslationQualityChecker()
+
+    try:
+        # 1차 번역
+        result = await get_vertex_ai().translate_batch(batch_dicts, context_info)
+
+        if not result.get("success"):
+            return {
+                "status": "error",
+                "error": result.get("error", "Translation failed"),
+                "data": []
+            }
+
+        # 응답 파싱
+        raw_content = result.get("data", "")
+        parsed_translations = _parse_translation_response(raw_content, batch_dicts)
+
+        # 번역 결과를 자막 형식으로 변환
+        translated_subs = []
+        for block in batch_dicts:
+            trans = next((t for t in parsed_translations if t["index"] == block["index"]), None)
+            translated_subs.append({
+                "id": block["index"],
+                "en": block["text"],
+                "ko": trans["text"] if trans else "",
+                "start": block.get("start", ""),
+                "end": block.get("end", "")
+            })
+
+        # 2. 품질 검사
+        untranslated_indices = checker.get_untranslated_indices(translated_subs)
+        retry_count = 0
+
+        # 3. 미번역 자동 재시도
+        while untranslated_indices and request.auto_retry_untranslated and retry_count < request.max_retries:
+            retry_count += 1
+            print(f"[Backend] Retrying {len(untranslated_indices)} untranslated blocks (attempt {retry_count})")
+
+            # 미번역 블록만 추출
+            retry_blocks = [b for b in batch_dicts if b["index"] in untranslated_indices]
+
+            if retry_blocks:
+                retry_result = await get_vertex_ai().translate_batch(retry_blocks, context_info)
+
+                if retry_result.get("success"):
+                    retry_parsed = _parse_translation_response(retry_result.get("data", ""), retry_blocks)
+
+                    # 결과 병합
+                    for trans in retry_parsed:
+                        for sub in translated_subs:
+                            if sub["id"] == trans["index"] and trans.get("text"):
+                                sub["ko"] = trans["text"]
+
+            # 다시 체크
+            untranslated_indices = checker.get_untranslated_indices(translated_subs)
+
+        # 4. 슬래시 오류 자동 수정
+        slash_fixed = 0
+        if request.auto_fix_slash:
+            fixed_subs, slash_fixed = checker.auto_fix_slash_errors(translated_subs)
+            translated_subs = fixed_subs
+
+        # 5. 최종 품질 리포트
+        final_report = checker.check_quality(translated_subs)
+
+        # 파싱된 형식으로 변환
+        final_translations = [{"index": s["id"], "text": s["ko"]} for s in translated_subs]
+
+        print(f"[Backend] Validated: {len(final_translations)} translations, "
+              f"retries={retry_count}, slash_fixed={slash_fixed}, "
+              f"remaining_untranslated={len(final_report.untranslated_lines)}")
+
+        return {
+            "status": "complete",
+            "total_batches": 1,
+            "truncated": result.get("truncated", False),
+            "expected_count": len(batch_dicts),
+            "received_count": len(final_translations),
+            "validation": {
+                "retries_performed": retry_count,
+                "slash_errors_fixed": slash_fixed,
+                "remaining_untranslated": len(final_report.untranslated_lines),
+                "translation_smell_count": len(final_report.translation_smell)
+            },
+            "data": [{
+                "batch_index": 0,
+                "content": final_translations,
+                "raw_content": raw_content
+            }]
+        }
+
+    except Exception as e:
+        print(f"[ERROR] Validated batch translation exception: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# QC 후처리 API — 번역 완료 후 품질 교정
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class QCPostProcessBlock(BaseModel):
+    index: int
+    start: str
+    end: str
+    en: str
+    ko: str
+
+class QCPostProcessRequest(BaseModel):
+    blocks: List[QCPostProcessBlock]
+    genre: str = "Drama"
+    title: str = ""
+    synopsis: Optional[str] = ""
+    personas: Optional[str] = ""
+    translation_rules: Optional[str] = ""
+    prev_context: Optional[List[dict]] = None
+
+
+def _remove_translationese(text: str) -> str:
+    """
+    규칙 기반 번역투 제거 — LLM이 놓친 번역투 대명사를 잡는 안전망.
+    '그녀가/그녀는/그녀의' 등 영어 직역투 대명사를 제거하거나 자연스럽게 교체.
+    """
+    if not text:
+        return text
+
+    # 효과음/음악 태그는 건드리지 않음
+    if '♪' in text or '♫' in text:
+        return text
+
+    lines = text.split('\n')
+    result = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            result.append(line)
+            continue
+
+        # 1) "그녀가/그녀는" 문장 시작 → 제거 (주어 생략)
+        stripped = re.sub(r'^그녀[가는]\s+', '', stripped)
+
+        # 2) "그녀의" → 삭제하거나 문맥 유지 (소유격 번역투)
+        #    "그녀의 눈" → "눈", "그녀의 말" → "그 말"
+        stripped = re.sub(r'그녀의\s+', '', stripped)
+
+        # 3) "그녀를/그녀에게" → 제거
+        stripped = re.sub(r'그녀[를에]\s*', '', stripped)
+        stripped = re.sub(r'그녀에게\s*', '', stripped)
+
+        # 4) "그들은/그들이/그들의" → 제거
+        stripped = re.sub(r'그들[은이의을에]\s*', '', stripped)
+
+        # 5) "그것은/그것이/그것을" → 제거 또는 "그건/그게/그걸"로 축약
+        stripped = re.sub(r'그것은\s*', '그건 ', stripped)
+        stripped = re.sub(r'그것이\s*', '그게 ', stripped)
+        stripped = re.sub(r'그것을\s*', '그걸 ', stripped)
+
+        # 6) "나는/나는" → "난" (구어체)
+        stripped = re.sub(r'^나는\s+(?!아니다|모른다)', '난 ', stripped)
+        stripped = re.sub(r'\s나는\s', ' 난 ', stripped)
+
+        # 7) "너는" → "넌" (구어체)
+        stripped = re.sub(r'^너는\s+', '넌 ', stripped)
+        stripped = re.sub(r'\s너는\s', ' 넌 ', stripped)
+
+        # 8) "우리는" → "우린" (구어체)
+        stripped = re.sub(r'^우리는\s+', '우린 ', stripped)
+        stripped = re.sub(r'\s우리는\s', ' 우린 ', stripped)
+
+        # 9) "당신은" → "당신" 또는 제거
+        stripped = re.sub(r'^당신은\s+', '당신 ', stripped)
+
+        # 빈 줄이 되면 원본 유지
+        if not stripped.strip():
+            result.append(line)
+        else:
+            result.append(stripped)
+
+    return '\n'.join(result)
+
+
+def _remove_casual_periods(text: str) -> str:
+    """
+    규칙 기반 마침표 제거 — LLM이 놓친 마침표를 100% 잡는 안전망.
+    반말(구어체) 대사에서 마침표를 제거하고, 존댓말은 유지한다.
+    """
+    if not text:
+        return text
+
+    # 존댓말 종결어미 (마침표 유지 대상)
+    FORMAL_ENDINGS = (
+        '습니다', '합니다', '입니다', '됩니다', '있습니다', '없습니다',
+        '겠습니다', '였습니다', '셨습니다',
+        '하십시오', '주십시오', '십시오',
+        '세요', '으세요', '하세요', '주세요', '드세요',
+        '까요', '나요', '가요', '지요',
+    )
+
+    lines = text.split('\n')
+    result = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            result.append(line)
+            continue
+
+        # 말줄임표 보존 ("그게...", "뭐...")
+        if stripped.endswith('...') or stripped.endswith('..'):
+            result.append(line)
+            continue
+
+        # 존댓말 끝 마침표는 유지
+        no_period = stripped.rstrip('.')
+        is_formal = any(no_period.endswith(f) for f in FORMAL_ENDINGS)
+        if is_formal:
+            result.append(line)
+            continue
+
+        # 1) 문장 끝 마침표 제거: "멋졌어." → "멋졌어"
+        if stripped.endswith('.') and not stripped.endswith('..'):
+            stripped = stripped[:-1]
+
+        # 2) 문장 중간 마침표 → 쉼표: "좋아. 더 가까이" → "좋아, 더 가까이"
+        #    패턴: 한글 + . + 공백 + 한글 (존댓말 아닌 경우만)
+        def _fix_mid_period(m):
+            before = m.group(1)
+            after = m.group(2)
+            # 중간 마침표 앞이 존댓말이면 유지
+            if any(before.endswith(f) for f in FORMAL_ENDINGS):
+                return m.group(0)
+            return f'{before}, {after}'
+
+        stripped = re.sub(r'([가-힣])\.\s+([가-힣])', _fix_mid_period, stripped)
+
+        result.append(stripped)
+
+    return '\n'.join(result)
+
+
+QC_SYSTEM_PROMPT = """당신은 10년 경력의 넷플릭스/디즈니+ OTT 자막 검수자(QC Senior Editor)입니다.
+1차 번역을 최소한으로 교정하여 "방영 가능 품질(Broadcast-Ready)"로 올리는 것이 목표입니다.
+
+🔴 최우선 원칙: 과교정 금지 (Over-Correction Prohibition)
+  • 이미 자연스러운 번역은 원본 그대로 출력하십시오.
+  • 의미가 동일한데 표현만 바꾸는 것은 교정이 아니라 취향 차이입니다.
+  • "바꿀 이유가 명확하지 않으면 바꾸지 마라"가 이 검수의 철칙입니다.
+
+📌 [QC 규칙 1] 말투 마침표 정리
+  • 반말/구어체 대사 끝 마침표(.) 제거. 존댓말(~습니다/~세요)은 유지.
+  • 느낌표(!), 물음표(?), 말줄임표(...)는 절대 건드리지 마십시오.
+
+📌 [QC 규칙 2] 번역투 전면 제거
+  • 자가 검증: "이 표현이 한국에서 제작된 영화/드라마 자막에 그대로 등장할 수 있는가?" — 아니면 교정.
+  • 영어 직역투 대명사, 합성어 직역, 관용구 직역, 소유격 남용, 불필요한 관사적 표현 모두 교정 대상.
+  • 단, 자연스러운 한국어 지시어(그건/그게/그걸 등)는 그대로 두십시오.
+
+📌 [QC 규칙 3] 줄바꿈 최적화
+  • 한 줄 18자 초과 시 의미 단위로 줄바꿈(\\n). 1블록 최대 2줄.
+  • 다중 화자 하이픈(-) 줄바꿈은 반드시 유지.
+
+📌 [QC 규칙 4] 화자별 말투 일관성
+  • [등장인물 말투]와 [이전 배치] 컨텍스트가 주어지면, 각 화자의 존대/반말을 유지.
+  • 같은 화자가 같은 상대에게 말투를 갑자기 바꾸면 수정. 단, 감정 고조에 의한 의도적 전환은 허용.
+
+📌 [QC 규칙 5] 한 블록 내 존대/반말 혼용 금지
+  • 한 블록 안에서 존댓말+반말 혼용 시, 더 높은 격식으로 통일.
+
+📌 [QC 규칙 6] "당신" 사용 금지
+  • "당신"이 2인칭 대명사로 사용된 경우, 이름/직책/너/선생님/그쪽 등으로 교체하거나 생략.
+  • 예외: 부부 갈등, 적대적 도발("당신이 뭔데"), 노래 가사 등 의도적 사용은 유지.
+
+📌 [QC 규칙 7] 영어식 주어·번역투 잔존 검출
+  • "그는/그녀는/그들은" 등 영어식 3인칭 대명사가 주어로 남아 있으면 교정 (생략 또는 이름 치환).
+  • "~것입니다/~하게 될 것이다/~네요" 남발 → 캐릭터 관계에 맞는 구어체 어미로 교정.
+  • "여정/초석/파트너십/관찰" 같은 문어체 명사 → 구어체 대체 (길/기반/함께하기/지켜보기).
+
+📌 [QC 규칙 8] 거리감·문장유형 톤 일관성 검증
+  • 감정 토로/농담이 해요체로 되어 있으면 → 반말로 교정 (관계 맵 우선).
+  • 공식 발표/보고가 반말로 되어 있으면 → 합니다체로 교정.
+  • 한 블록 내에서 존대/반말 톤이 뒤섞여 있으면 → 하나로 통일.
+
+📌 [QC 규칙 9] [오역의심] 태그 처리
+  • 입력에 "[오역의심]" 태그가 붙은 블록은 특별히 주의하여 재검토.
+  • 원문(영어)과 번역(한국어)의 의미가 괴리되면 교정.
+  • 교정 후에도 자연스러운 번역이 불가하면 "[오역의심]" 태그를 유지하여 출력.
+  • 정상 교정된 경우 태그를 제거하고 교정문만 출력.
+
+[출력 형식] 오직 JSON 배열만 출력하세요:
+[{"index": 1, "text": "교정된 자막"}, {"index": 2, "text": "교정된 자막"}]
+
+⚠️ 입력된 블록 수만큼 정확히 출력하십시오. 누락/합치기/분할 금지!
+⚠️ 교정할 것이 없으면 원본 텍스트를 그대로 출력하십시오."""
+
+
+@router.post("/qc-postprocess")
+async def qc_postprocess(request: QCPostProcessRequest):
+    """
+    🔍 QC 후처리 — 번역 완료 후 마침표/번역투/줄바꿈 교정
+
+    번역된 자막을 LLM에 보내 3가지 QC 규칙으로 교정 후 반환.
+    """
+    print(f"[QC] Post-processing {len(request.blocks)} blocks for '{request.title}'")
+
+    # 번역된 자막을 입력 페이로드로 구성
+    source_lines = []
+    for b in request.blocks:
+        if b.ko and b.ko.strip():
+            source_lines.append(f"{b.index}: {b.ko}")
+        else:
+            source_lines.append(f"{b.index}: {b.en}")
+
+    source_payload = "\n".join(source_lines)
+
+    # --- user_prompt: 컨텍스트 포함 구성 ---
+    user_parts = [f"[작품: {request.title} / 장르: {request.genre}]"]
+
+    if request.synopsis:
+        user_parts.append(f"\n[시놉시스]\n{request.synopsis[:2000]}")
+
+    if request.personas:
+        user_parts.append(f"\n[등장인물 말투]\n{request.personas}")
+
+    # 이전 배치 컨텍스트 — 말투 연속성 유지용
+    if request.prev_context:
+        last_blocks = request.prev_context[-15:]
+        ctx_lines = []
+        for pc in last_blocks:
+            ko_text = pc.get("ko", "") or ""
+            # 존대/반말 태그 자동 부착
+            tag = "[존대]" if any(ko_text.rstrip('.!?').endswith(e) for e in (
+                '습니다', '합니다', '입니다', '됩니다', '겠습니다',
+                '하십시오', '주십시오', '세요', '하세요', '주세요',
+                '까요', '나요', '가요', '지요',
+            )) else "[반말]"
+            ctx_lines.append(f"  {tag} {ko_text}")
+        user_parts.append(f"\n[이전 배치 — 말투 반드시 이어갈 것]\n" + "\n".join(ctx_lines))
+
+    user_parts.append(f"\n다음 번역된 자막을 QC 규칙에 따라 교정하세요:\n\n{source_payload}")
+    user_prompt = "\n".join(user_parts)
+
+    # --- system_instruction: translation_rules 추가 ---
+    system_instruction = QC_SYSTEM_PROMPT
+    if request.translation_rules:
+        system_instruction += f"\n\n📌 [추가 번역 규칙 — 반드시 준수]\n{request.translation_rules}"
+
+    try:
+        translator = get_vertex_ai()
+
+        def make_qc_call(attempt=0, max_retries=3):
+            return translator.client.models.generate_content(
+                model=translator.model,
+                contents=user_prompt,
+                config={
+                    "system_instruction": system_instruction,
+                    "max_output_tokens": 32768,
+                    "temperature": 0.1,
+                    "thinking_config": {"thinking_budget": 1024},
+                }
+            )
+
+        response, error = translator._retry_with_backoff(make_qc_call)
+
+        if error:
+            print(f"[QC-ERROR] API call failed: {error}")
+            return {
+                "status": "error",
+                "error": error,
+                "data": []
+            }
+
+        raw_content = response.text
+        parsed = _parse_translation_response(raw_content, [b.dict() for b in request.blocks])
+
+        # 규칙 기반 번역투 제거 — LLM이 놓친 "그녀가/그녀의" 등 100% 보정
+        translationese_fixed = 0
+        for item in parsed:
+            if item.get("text"):
+                cleaned = _remove_translationese(item["text"])
+                if cleaned != item["text"]:
+                    item["text"] = cleaned
+                    translationese_fixed += 1
+
+        # 규칙 기반 마침표 제거 — LLM이 놓친 것 100% 보정 (새로운 remove_periods 함수 사용)
+        period_fixed = 0
+        for item in parsed:
+            if item.get("text"):
+                cleaned = remove_periods(item["text"])
+                if cleaned != item["text"]:
+                    item["text"] = cleaned
+                    period_fixed += 1
+
+        # 말투 급변 교정 — 연속 블록에서 존대↔반말 급변 감지 및 통일
+        speech_flip_fixed = 0
+        if parsed and request.prev_context:
+            # parsed를 block 형태로 변환
+            blocks_for_fix = [{"index": item.get("index"), "ko": item.get("text")} for item in parsed]
+            fixed_blocks = fix_speech_flip(blocks_for_fix, request.prev_context)
+            # 결과를 다시 parsed에 반영
+            for i, fb in enumerate(fixed_blocks):
+                if fb.get("ko") != parsed[i].get("text"):
+                    parsed[i]["text"] = fb.get("ko")
+                    speech_flip_fixed += 1
+
+        print(f"[QC] Processed {len(parsed)} blocks (translationese-fix: {translationese_fixed}, period-fix: {period_fixed}, speech-flip-fix: {speech_flip_fixed})")
+
+        return {
+            "status": "complete",
+            "expected_count": len(request.blocks),
+            "received_count": len(parsed),
+            "period_fixed": period_fixed,
+            "translationese_fixed": translationese_fixed,
+            "speech_flip_fixed": speech_flip_fixed,
+            "data": [{
+                "batch_index": 0,
+                "content": parsed
+            }]
+        }
+
+    except Exception as e:
+        print(f"[QC-ERROR] Post-processing failed: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"QC post-processing failed: {str(e)}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 말투 교정 함수 (QC 후처리에서 사용)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def remove_periods(text: str) -> str:
+    """
+    자막 끝 마침표 제거 (반말만) - 존댓말/물음표/느낌표는 유지
+
+    반말 끝 어미: 해/야/지/다/어/네/걸/잖아/인거야/한거야/된거야/할거야/간다/온다/한다/된다
+    존댓말 끝 어미: 합니다/습니다/예요/에요/죠/지요/나요/까요/셔요/ullo/입니다/됩니다
+    """
+    if not text:
+        return text
+
+    # 물음표/느낌표로 끝나는 경우 유지
+    if text.rstrip().endswith('?') or text.rstrip().endswith('!'):
+        return text
+
+    # 말줄임표 보존
+    if text.rstrip().endswith('...') or text.rstrip().endswith('..'):
+        return text
+
+    # 반말 종결어미 목록
+    banmal_endings = [
+        '해', '야', '지', '다', '어', '네', '걸', '잖아',
+        '인거야', '한거야', '된거야', '할거야',
+        '간다', '온다', '한다', '된다',
+        '야말야', '는거야', '잖는지', '는지', '은지',
+        '구나', '군', '야', '야말야', '잖아',
+    ]
+
+    # 존댓말 종결어미 목록 (마침표 유지)
+    formal_endings = [
+        '합니다', '습니다', '예요', '에요', '죠', '지요', '나요', '까요',
+        '셔요', 'ullo', '입니다', '됩니다', '있습니다', '없습니다',
+        '겠습니다', '였습니다', '셨습니다', '하시습니다', '주ISCO',
+        '하세요', '주세요', '드세요', '으세요', '십니다',
+        '지요', '인가요', '인가', '죠', '구요',
+    ]
+
+    # 줄 단위로 처리
+    lines = text.split('\n')
+    result = []
+
+    for line in lines:
+        stripped = line.rstrip()
+        if not stripped:
+            result.append(line)
+            continue
+
+        # 마침표가 없는 경우 통과
+        if not stripped.endswith('.'):
+            result.append(line)
+            continue
+
+        # 물음표/느낌표로 끝나면 통과
+        if stripped.endswith('?') or stripped.endswith('!'):
+            result.append(line)
+            continue
+
+        # 마침표 제거한 텍스트
+        no_period = stripped[:-1]  # 마지막 . 제거
+
+        # 존댓말 끝인지 확인
+        is_formal = any(no_period.endswith(f) for f in formal_endings)
+        if is_formal:
+            result.append(line)
+            continue
+
+        # 반말 끝인지 확인
+        is_banmal = any(no_period.endswith(e) for e in banmal_endings)
+        if is_banmal:
+            result.append(no_period)  # 마침표 제거
+            continue
+
+        # 알 수 없는 끝이면 일단 유지 (안전하게)
+        result.append(line)
+
+    return '\n'.join(result)
+
+
+def detect_speech_level(text: str) -> str:
+    """
+    텍스트의 말투 레벨 감지 (존대/반말/중립)
+    """
+    if not text:
+        return "unknown"
+
+    # 반말 종결어미
+    banmal_endings = [
+        '해', '야', '지', '다', '어', '네', '걸', '잖아',
+        '인거야', '한거야', '된거야', '할거야',
+        '간다', '온다', '한다', '된다',
+        '구나', '군', '야', '잖아',
+    ]
+
+    # 존댓말 종결어미
+    formal_endings = [
+        '합니다', '습니다', '예요', '에요', '죠', '지요', '나요', '까요',
+        '셔요', 'ullo', '입니다', '됩니다', '있습니다', '없습니다',
+        '겠습니다', '였습니다', '셨습니다', '하시습니다', '주ISCO',
+        '하세요', '주세요', '드세요', '으세요', '십니다',
+    ]
+
+    text = text.rstrip('.!?')
+
+    # 존댓말 감지
+    for ending in formal_endings:
+        if text.endswith(ending):
+            return "honorific"
+
+    # 반말 감지
+    for ending in banmal_endings:
+        if text.endswith(ending):
+            return "banmal"
+
+    return "unknown"
+
+
+def fix_speech_flip(blocks: list, prev_context: list) -> list:
+    """
+    연속 블록에서 말투 급변 감지 및 교정
+
+    - 이전 블록 말투로統一
+    - 화자가 바뀐 경우는 예외 (다른 인물은 다른 말투 가능)
+    - 화자 변경은 "—" 또는 "-" 또는 ":" 로 감지
+    """
+    if not blocks or len(blocks) < 2:
+        return blocks
+
+    # prev_context에서 마지막 말투 레벨 가져오기
+    last_speech_level = "unknown"
+    last_speaker = None
+
+    if prev_context and len(prev_context) > 0:
+        last_ctx = prev_context[-1]
+        last_text = last_ctx.get("ko", "") or last_ctx.get("translated", "")
+        last_speech_level = detect_speech_level(last_text)
+        last_speaker = last_ctx.get("speaker") or last_ctx.get("original", "").split(":")[0] if ":" in (last_ctx.get("original", "") or "") else None
+
+    # 현재 배치 첫 번째 블록의 말투
+    first_text = blocks[0].get("ko", "") if isinstance(blocks[0], dict) else blocks[0].get("text", "")
+    first_speech_level = detect_speech_level(first_text)
+
+    # 말투 급변 감지 및 교정
+    fixed_count = 0
+    result = []
+
+    # 첫 번째 블록 처리 (이전 컨텍스트와 비교)
+    if last_speech_level != "unknown" and first_speech_level != "unknown" and last_speech_level != first_speech_level:
+        # 말투 급변 감지 -> 이전 말투로统一
+        corrected = convert_speech_level(first_text, last_speech_level)
+        if corrected != first_text:
+            if isinstance(blocks[0], dict):
+                blocks[0] = {**blocks[0], "ko": corrected}
+            else:
+                blocks[0]["text"] = corrected
+            fixed_count += 1
+
+    # 연속 블록 간 말투 일관성 유지
+    prev_text = blocks[0].get("ko", "") if isinstance(blocks[0], dict) else blocks[0].get("text", "")
+    prev_level = detect_speech_level(prev_text)
+    prev_speaker = None
+
+    for i, block in enumerate(blocks):
+        text = block.get("ko", "") if isinstance(block, dict) else block.get("text", "")
+
+        # 화자 변경 감지 (자막에서 화자 구분 패턴)
+        # 패턴: "화자: 대사" 또는 "화자 — 대사" 또는 "- 화자"等形式
+        speaker = None
+        speaker_patterns = [
+            r'^([^:]+):\s*',  # "화자: 대사"
+            r'^([^—]+)—\s*',  # "화자 — 대사"
+            r'^-\s*([^:]+):\s*',  # "- 화자: 대사"
+        ]
+
+        for pattern in speaker_patterns:
+            match = re.match(pattern, text)
+            if match:
+                speaker = match.group(1).strip()
+                break
+
+        # 화자가 변경되면 말투도 변경 가능 (다른 인물이므로)
+        if speaker and prev_speaker and speaker != prev_speaker:
+            prev_level = detect_speech_level(text)  # 새로운 화자의 말투로 업데이트
+            prev_speaker = speaker
+            result.append(block)
+            continue
+
+        # 화자가 동일하면 말투 일관성 유지
+        current_level = detect_speech_level(text)
+        if current_level != "unknown" and prev_level != "unknown" and current_level != prev_level:
+            # 말투 급변 -> 이전 말투로统一
+            corrected = convert_speech_level(text, prev_level)
+            if corrected != text:
+                if isinstance(block, dict):
+                    block = {**block, "ko": corrected}
+                else:
+                    block["text"] = corrected
+                fixed_count += 1
+
+        prev_text = text
+        prev_level = detect_speech_level(text)
+        prev_speaker = speaker
+        result.append(block)
+
+    if fixed_count > 0:
+        print(f"[QC] Speech flip fixed: {fixed_count} blocks")
+
+    return result
+
+
+def convert_speech_level(text: str, target_level: str) -> str:
+    """
+    텍스트의 말투를 목표 레벨로 변환
+    """
+    if not text or target_level == "unknown":
+        return text
+
+    text = text.rstrip()
+
+    # 반말 -> 존댓말 변환 (기본 해요체)
+    if target_level == "honorific":
+        # 이미 존댓말이면 통과
+        if detect_speech_level(text) == "honorific":
+            return text
+
+        # 반말 -> 해요체/입니다체 변환
+        conversions = [
+            # 반말 어미 -> 존댓말 어미
+            ('해요', '합니다'),
+            ('해', '합니다'),
+            ('했어', '했습니다'),
+            ('했어요', '했습니다'),
+            ('야', '예요'),
+            ('야.', '예요.'),
+            ('어', '습니다'),
+            ('다', '습니다'),
+            ('지', '는지'),
+            ('네', '네요'),
+            ('걸', '거예요'),
+            ('잖아', '잖아요'),
+            ('잖아.', '잖아요.'),
+            ('구나', '군요'),
+            ('군', '군요'),
+            ('는거야', '는거예요'),
+            ('한거야', '한거예요'),
+            ('된거야', '된거예요'),
+            ('할거야', '할거예요'),
+            ('인거야', '인거예요'),
+            ('이다', '입니다'),
+            ('야말야', '입니다'),
+        ]
+
+        for banmal, formal in conversions:
+            if text.endswith(banmal):
+                text = text[:-len(banmal)] + formal
+                break
+
+        # 마침표 추가 (없는 경우)
+        if not text.endswith('.'):
+            text += '.'
+
+    # 존댓말 -> 반말 변환
+    elif target_level == "banmal":
+        # 이미 반말이면 통과
+        if detect_speech_level(text) == "banmal":
+            return text
+
+        # 존댓말 -> 반말 변환
+        conversions = [
+            # 존댓말 어미 -> 반말 어미
+            ('합니다', '해'),
+            ('했습니다', '했어'),
+            ('입니다', '야'),
+            ('예요', '야'),
+            ('에요', '야'),
+            ('네요', '네'),
+            ('습니다', '어'),
+            ('것입니다', '거야'),
+            ('거예요', '거야'),
+            ('거예요.', '야.'),
+            ('습니다.', '어.'),
+            ('합니다.', '해.'),
+            ('입니다.', '야.'),
+            ('죠', '지'),
+            ('지요', '지'),
+            ('나요', '나'),
+            ('까요', '까'),
+            ('셔요', '해'),
+            ('주ISCO', '줘'),
+            ('됩니다', '돼'),
+            ('있습니다', '있어'),
+            ('없습니다', '없어'),
+            ('하겠습니다', '할게'),
+            ('해주세요', '해줘'),
+            ('하세요', '해'),
+            ('해주세요.', '해줘.'),
+            ('하세요.', '해.'),
+        ]
+
+        for formal, banmal in conversions:
+            if text.endswith(formal):
+                text = text[:-len(formal)] + banmal
+                break
+            # 마침표 있는 경우
+            if text.endswith(formal + '.'):
+                text = text[:-len(formal) - 1] + banmal
+                break
+
+    return text

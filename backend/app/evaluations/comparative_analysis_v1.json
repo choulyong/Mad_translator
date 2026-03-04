@@ -1,0 +1,77 @@
+{
+  "version": "1.0",
+  "analysis_date": "2026-02-22T18:51:36.463091",
+  "analysis_type": "fine-tuned_vs_generic",
+  "total_samples_evaluated": 10,
+  "overall_improvement": {
+    "baseline_average": 0.68,
+    "finetuned_average": 0,
+    "absolute_improvement": -0.68,
+    "percentage_improvement": 0.0
+  },
+  "metric_breakdown": {
+    "avg_fluency": {
+      "baseline": 0,
+      "finetuned": 0.81,
+      "absolute_improvement": 0.81,
+      "percentage_improvement": 0
+    },
+    "avg_accuracy": {
+      "baseline": 0,
+      "finetuned": 0.88,
+      "absolute_improvement": 0.88,
+      "percentage_improvement": 0
+    },
+    "avg_tone_consistency": {
+      "baseline": 0,
+      "finetuned": 0.68,
+      "absolute_improvement": 0.68,
+      "percentage_improvement": 0
+    },
+    "avg_overall": {
+      "baseline": 0,
+      "finetuned": 0.805,
+      "absolute_improvement": 0.805,
+      "percentage_improvement": 0
+    }
+  },
+  "character_improvements": {
+    "Judy Hopps": {
+      "baseline": 0.68,
+      "finetuned": 0.797,
+      "improvement": 0.117,
+      "improvement_pct": 17.2
+    },
+    "Officer": {
+      "baseline": 0.7,
+      "finetuned": 0.815,
+      "improvement": 0.115,
+      "improvement_pct": 16.4
+    },
+    "Chief Bogo": {
+      "baseline": 0.72,
+      "finetuned": 0.812,
+      "improvement": 0.092,
+      "improvement_pct": 12.8
+    },
+    "Nick Wilde": {
+      "baseline": 0.65,
+      "finetuned": 0.814,
+      "improvement": 0.164,
+      "improvement_pct": 25.2
+    }
+  },
+  "insights": [
+    "Best character improvement: Nick Wilde (25.2%)"
+  ],
+  "business_impact": {
+    "translation_quality_improvement": "0.0%",
+    "estimated_user_satisfaction_increase": "0.0%",
+    "estimated_error_reduction": "0.0%",
+    "production_readiness": "CONDITIONAL",
+    "recommendation": "DO NOT DEPLOY YET - Further fine-tuning needed"
+  },
+  "recommendations_from_evaluation": [
+    "Enhance tone marker detection and application in training data"
+  ]
+}

@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+beautifulsoup4
+requests
+google-cloud-aiplatform
+python-multipart
+anthropic[vertex]
+python-dotenv

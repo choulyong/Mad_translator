@@ -1,0 +1,132 @@
+{
+  "version": "1.0",
+  "description": "Zootopia 2 Korean Lexicon Dictionary - Fixed Terms",
+  "lastUpdated": "2026-02-22",
+
+  "characters": {
+    "Judy Hopps": ["주디 홉스", "judy hopps", "주디"],
+    "Nick Wilde": ["닉 와일드", "nick wilde", "닉"],
+    "Bellwether": ["벨웨더", "벨더", "mayor bellwether"],
+    "Chief Bogo": ["보고 경찰국장", "chief bogo", "보고"],
+    "Mayor Lionheart": ["라이언하트 시장", "mayor lionheart"],
+    "Mr. Big": ["미스터 빅", "mr. big"],
+    "Flash Slothmore": ["플래시", "flash"],
+    "Yax": ["야크스", "yax"],
+    "Officer Frankie": ["프랭키", "frankie"],
+    "Officer McHorn": ["맥혼", "mchhorn"],
+    "Clawhauser": ["클로하우저", "clawhauser"]
+  },
+
+  "locations": {
+    "Zootopia": ["주토피아"],
+    "Precinct 1": ["1분소"],
+    "Police Department": ["경찰국", "ZPD"],
+    "Savanna Central": ["사바나 센트럴"],
+    "Bunnyburrow": ["래빗 타운", "버니버로우"],
+    "Tundratown": ["툰드라 타운"],
+    "The Burrows": ["버로우"],
+    "Natural History Museum": ["자연사 박물관"]
+  },
+
+  "organizations": {
+    "Zootopia Police Department": ["주토피아 경찰국", "ZPD", "경찰국"],
+    "Mammal Inclusion Initiative": ["포유류 평등 계획"],
+    "Predator Response Unit": ["육식동물 대응팀"]
+  },
+
+  "animals": {
+    "rabbit": ["토끼"],
+    "fox": ["여우"],
+    "sheep": ["양"],
+    "lion": ["사자"],
+    "buffalo": ["들소"],
+    "deer": ["사슴"],
+    "otter": ["수달"],
+    "moose": ["엘크"],
+    "sloth": ["나무늘보"],
+    "yak": ["야크"],
+    "gazelle": ["가젤"],
+    "cheetah": ["치타"]
+  },
+
+  "terms": {
+    "predator": ["육식동물", "포식자"],
+    "prey": ["초식동물", "피해자"],
+    "mammal": ["포유류"],
+    "officer": ["경찰관"],
+    "detective": ["형사"],
+    "case": ["사건", "사건건"],
+    "investigate": ["조사하다"],
+    "suspect": ["용의자"],
+    "arrest": ["체포"],
+    "carrot": ["당근"],
+    "hustle": ["사기", "장난"],
+    "con": ["사기"],
+    "pawpsicle": ["팡팡 아이스크림", "팡팡"]
+  },
+
+  "expressions": {
+    "Welcome to Zootopia": ["주토피아에 온 것을 환영합니다"],
+    "Mammals": ["포유류들"],
+    "It is a perfect day": ["정말 멋진 날씨네요"],
+    "There is someone in our community": ["우리 공동체에"],
+    "Parking meter": ["주차 요금"],
+    "Meter maid": ["주차 요금 단속원"]
+  },
+
+  "honorifics": {
+    "sir": ["선생님", "씨"],
+    "madam": ["여사님"],
+    "officer": ["경관", "경찰관"],
+    "mayor": ["시장"],
+    "chief": ["국장", "경찰국장"]
+  },
+
+  "particles": {
+    "yes": ["네", "그래", "맞아"],
+    "no": ["아니", "안 돼", "아니야"],
+    "thank you": ["고마워", "감사합니다", "고마워요"],
+    "sorry": ["미안해", "죄송합니다", "죄송해요"],
+    "please": ["제발", "부탁합니다", "부탁해요"]
+  },
+
+  "rules": {
+    "always_replace": {
+      "Zootopia": "주토피아",
+      "ZPD": "주토피아 경찰국",
+      "Hopps": "홉스",
+      "Wilde": "와일드",
+      "Bellwether": "벨웨더"
+    },
+
+    "context_specific": {
+      "meter": {
+        "traffic_context": "주차 요금",
+        "default": "미터"
+      },
+      "case": {
+        "police_context": "사건",
+        "default": "경우"
+      }
+    },
+
+    "priority_order": [
+      "character_names",
+      "location_names",
+      "organization_names",
+      "common_terms",
+      "expressions"
+    ]
+  },
+
+  "statistics": {
+    "total_entries": 150,
+    "character_count": 11,
+    "location_count": 8,
+    "organization_count": 3,
+    "animal_types": 12,
+    "common_terms": 20,
+    "expressions": 6,
+    "quality_score": 95
+  }
+}

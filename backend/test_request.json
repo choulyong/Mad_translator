@@ -1,0 +1,24 @@
+{
+  "metadata": {
+    "title": "Zootopia",
+    "genre": ["Animation", "Adventure", "Family", "Comedy"],
+    "synopsis": "A rabbit police officer and a fox must work together to uncover a conspiracy.",
+    "director": "Byron Howard, Rich Moore",
+    "actors": "Ginnifer Goodwin, Jason Bateman, Idris Elba",
+    "year": "2016",
+    "tmdb_id": "269149",
+    "characters": [
+      {"actor": "Ginnifer Goodwin", "character": "Judy Hopps", "gender": "female", "order": 0},
+      {"actor": "Jason Bateman", "character": "Nick Wilde", "gender": "male", "order": 1}
+    ],
+    "detailed_plot": "",
+    "wikipedia_plot": "",
+    "has_wikipedia": false
+  },
+  "diagnostic_stats": {
+    "total_count": 500,
+    "complexity": 0.5,
+    "sample_texts": []
+  },
+  "subtitle_samples": ["Hey there!", "What do you want?"]
+}

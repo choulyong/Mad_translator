@@ -1,0 +1,43 @@
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+
+export const movies = sqliteTable("movies", {
+  id: text("id").primaryKey(),
+  originalName: text("original_name").notNull(),
+  newName: text("new_name").notNull(),
+  filePath: text("file_path").notNull(),
+  tmdbId: integer("tmdb_id"),
+  title: text("title").notNull(),
+  releaseDate: text("release_date"),
+  posterPath: text("poster_path"),
+  overview: text("overview"),
+  genres: text("genres"),
+  director: text("director"),
+  cast: text("cast"),
+  rating: text("rating"),
+  runtime: integer("runtime"),
+  imdbId: text("imdb_id"),
+  imdbRating: text("imdb_rating"),
+  rottenTomatoes: text("rotten_tomatoes"),
+  metacritic: text("metacritic"),
+  awards: text("awards"),
+  castProfiles: text("cast_profiles"),
+  backdropPath: text("backdrop_path"),
+  tagline: text("tagline"),
+  trailerUrl: text("trailer_url"),
+  budget: integer("budget"),
+  revenue: integer("revenue"),
+  productionCountries: text("production_countries"),
+  writer: text("writer"),
+  rated: text("rated"),
+  plotFull: text("plot_full"),
+  plotFullKo: text("plot_full_ko"),
+  boxOffice: text("box_office"),
+  subtitleFiles: text("subtitle_files"),
+  wikiSummary: text("wiki_summary"),
+  wikiOverview: text("wiki_overview"),
+  wikiUrl: text("wiki_url"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export type Movie = typeof movies.$inferSelect;
+export type NewMovie = typeof movies.$inferInsert;

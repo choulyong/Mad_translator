@@ -1,0 +1,217 @@
+{
+  "total_blocks": 100,
+  "translated": 98,
+  "qc_changed": 30,
+  "samples": [
+    {
+      "index": 1,
+      "en": "Bleh...",
+      "ko_before": "웩…",
+      "ko_after": "웩…",
+      "changed": false
+    },
+    {
+      "index": 2,
+      "en": "Blood. Blood. Blood.\nAnd death.",
+      "ko_before": "피, 피, 피… 그리고 죽음.",
+      "ko_after": "피, 피, 피… 죽음!",
+      "changed": true
+    },
+    {
+      "index": 3,
+      "en": "All right. You know\nwhat? You're milking it.",
+      "ko_before": "됐어. 알겠어? 너무 오버하잖아.",
+      "ko_after": "됐어, 됐어. 너무 오버하잖아",
+      "changed": true
+    },
+    {
+      "index": 4,
+      "en": "Besides, I think we got it.",
+      "ko_before": "게다가 다 녹음된 것 같아.",
+      "ko_after": "게다가 다 녹음된 것 같아.",
+      "changed": false
+    },
+    {
+      "index": 5,
+      "en": "We got it up there.\nThank you, Yakkity-yak.",
+      "ko_before": "다 녹음됐지. 고마워, 수다쟁이.",
+      "ko_after": "다 녹음됐지. 고마워, 수다쟁이.",
+      "changed": false
+    },
+    {
+      "index": 6,
+      "en": "You laid it all out\nbeautifully.",
+      "ko_before": "아주 멋지게 다 말해줬네.",
+      "ko_after": "아주 제대로 불었네",
+      "changed": true
+    },
+    {
+      "index": 7,
+      "en": "I framed Lionheart.\nI can frame you too.",
+      "ko_before": "라이언하트를 함정에 빠뜨렸지. 너도 그렇게 할 수 있어.",
+      "ko_after": "라이언하트를 함정에 빠뜨렸지. 너도 그렇게 할 수 있어",
+      "changed": true
+    },
+    {
+      "index": 8,
+      "en": "It's my word against yours.",
+      "ko_before": "내 말과 네 말 싸움이야.",
+      "ko_after": "네 말과 내 말 싸움이야",
+      "changed": true
+    },
+    {
+      "index": 9,
+      "en": "Actually...",
+      "ko_before": "사실은…",
+      "ko_after": "사실은…",
+      "changed": false
+    },
+    {
+      "index": 10,
+      "en": "And I'll dart\nevery predator in Zootopia",
+      "ko_before": "그리고 주토피아의 모든 포식자에게",
+      "ko_after": "주토피아의 모든 포식자에게",
+      "changed": true
+    },
+    {
+      "index": 11,
+      "en": "to keep it that way.",
+      "ko_before": "약물을 쏴서 그렇게 만들 거야.",
+      "ko_after": "약물을 쏴서 그렇게 만들 거야",
+      "changed": true
+    },
+    {
+      "index": 12,
+      "en": "-It's your word against yours.\n-Huh?",
+      "ko_before": "- 네 말과 네 말 싸움이지. -응?",
+      "ko_after": "- 네 말과 내 말 싸움이지. -응?",
+      "changed": true
+    },
+    {
+      "index": 13,
+      "en": "It's called a hustle,\nsweetheart.",
+      "ko_before": "이게 바로 사기야, 아가씨.",
+      "ko_after": "이게 바로 기술이지, 아가씨.",
+      "changed": true
+    },
+    {
+      "index": 14,
+      "en": "Boom.",
+      "ko_before": "짠.",
+      "ko_after": "짠.",
+      "changed": false
+    },
+    {
+      "index": 16,
+      "en": "Unlikely duo Judy Hopps,\nthe city's first bunny cop,",
+      "ko_before": "예상치 못한 콤비, 주토피아 최초의 토끼 경찰 주디 홉스와",
+      "ko_after": "예상치 못한 콤비, 주토피아 최초의 토끼 경찰 주디 홉스와",
+      "changed": false
+    },
+    {
+      "index": 17,
+      "en": "and Nicholas Wilde,\na small-time street fox,",
+      "ko_before": "작은 거리 여우 니콜라스 와일드가",
+      "ko_after": "시시한 사기꾼 여우 니콜라스 와일드가",
+      "changed": true
+    },
+    {
+      "index": 18,
+      "en": "uncovered a conspiracy\nby Mayor Bellwether today",
+      "ko_before": "오늘 벨웨더 시장의 음모를 밝혀냈습니다.",
+      "ko_after": "오늘 벨웨더 시장의 음모를 밝혀냈습니다.",
+      "changed": false
+    },
+    {
+      "index": 19,
+      "en": "using a toy carrot\nrecorder pen.",
+      "ko_before": "장난감 당근 녹음 펜을 사용해서요.",
+      "ko_after": "장난감 당근 녹음 펜을 사용해서요.",
+      "changed": false
+    },
+    {
+      "index": 20,
+      "en": "I can frame you too.",
+      "ko_before": "나도 널 함정에 빠뜨릴 수 있어.",
+      "ko_after": "나도 널 함정에 빠뜨릴 수 있어",
+      "changed": true
+    },
+    {
+      "index": 22,
+      "en": "Wilde later\njoined the ZPD himself,",
+      "ko_before": "와일드는 나중에 주토피아 경찰에 합류했고,",
+      "ko_after": "와일드는 나중에 주토피아 경찰에 합류했고,",
+      "changed": false
+    },
+    {
+      "index": 23,
+      "en": "where the pair are now the\nvery first bunny-fox team",
+      "ko_before": "그들은 이제 주토피아 역사상 최초의",
+      "ko_after": "이제 주토피아 역사상 최초의",
+      "changed": true
+    },
+    {
+      "index": 24,
+      "en": "in the history of Zootopia.",
+      "ko_before": "토끼-여우 팀이 되었습니다.",
+      "ko_after": "토끼-여우 팀이 되었습니다.",
+      "changed": false
+    },
+    {
+      "index": 25,
+      "en": "New mayor and former actor\nBrian Winddancer",
+      "ko_before": "새 시장이자 전 배우인 브라이언 윈드댄서는",
+      "ko_after": "새 시장이자 전 배우인 브라이언 윈드댄서는",
+      "changed": false
+    },
+    {
+      "index": 26,
+      "en": "hailed the two",
+      "ko_before": "두 사람을 칭송했습니다.",
+      "ko_after": "두 사람을 칭송했습니다.",
+      "changed": false
+    },
+    {
+      "index": 27,
+      "en": "during celebrations\nfor the 100th anniversary",
+      "ko_before": "주토피아의 날씨 벽 발명\n100주년 기념 행사에서요.",
+      "ko_after": "주토피아의 날씨 벽 발명 100주년 기념 행사에서요.",
+      "changed": true
+    },
+    {
+      "index": 28,
+      "en": "of the invention\nof Zootopia's weather walls",
+      "ko_before": "이 벽 덕분에 모든 환경과 모든 동물이",
+      "ko_after": "이 벽 덕분에 모든 환경과 모든 동물이",
+      "changed": false
+    },
+    {
+      "index": 29,
+      "en": "that allowed all environments\nand all animals",
+      "ko_before": "한 도시에서 공존할 수 있게 되었죠.",
+      "ko_after": "한 도시에서 공존할 수 있게 되었죠.",
+      "changed": false
+    },
+    {
+      "index": 30,
+      "en": "to coexist in one city.",
+      "ko_before": "이것이 바로 주토피아 100주년입니다!",
+      "ko_after": "이것이 바로 주토피아 100주년입니다!",
+      "changed": false
+    },
+    {
+      "index": 31,
+      "en": "This is our Zootennial!",
+      "ko_before": "그리고 보잘것없는 시골 토끼가",
+      "ko_after": "그리고 보잘것없는 시골 토끼가",
+      "changed": false
+    },
+    {
+      "index": 32,
+      "en": "And if a lowly country bunny",
+      "ko_before": "",
+      "ko_after": "",
+      "changed": false
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+Traceback (most recent call last):
+  File "C:\Vibe Coding\rename\backend\test_tone_refactoring.py", line 59, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "C:\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "C:\Vibe Coding\rename\backend\test_tone_refactoring.py", line 48, in main
+    blocks = await run_final_tone_guardrail(job, blocks, mapper)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Vibe Coding\rename\backend\app\engine\passes\pass_5_5_guardrail.py", line 55, in run_final_tone_guardrail
+    translator = VertexTranslator()
+  File "C:\Vibe Coding\rename\backend\app\services\vertex_ai.py", line 77, in __init__
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: GCP_PROJECT_ID 환경변수가 설정되지 않았습니다. .env 파일 또는 환경변수를 확인하세요.

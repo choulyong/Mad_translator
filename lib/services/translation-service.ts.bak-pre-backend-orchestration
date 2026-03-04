@@ -1,0 +1,1631 @@
+/**
+ * Translation Service V3 — Cinema Engine
+ * Module-level singleton. Runs independently of React component lifecycle.
+ *
+ * V3 Pass Flow:
+ *   Pass 0   — Speaker identification (/identify-speakers)
+ *   Pass 0.5 — Addressee estimation + speech policy (frontend only)
+ *   Pass 1   — Semantic batch translation (CPS + tone memory)
+ *   Pass 2   — Failed batch retry
+ *   Pass 3   — Missing block fill
+ *   Pass 4   — LLM-as-Judge QC
+ */
+
+import { useTranslateStore } from "@/lib/store/translate-store";
+import type {
+  SubtitleBlock,
+  SemanticBatch,
+  ToneMemoryEntry,
+  SpeechPolicy,
+  SpeechPolicyType,
+  ConfirmedSpeechLevel,
+} from "@/lib/store/translate-types";
+import {
+  parseTimecodeToSeconds,
+  sanitizeSubtitleText,
+  computeBlockDuration,
+  computeMaxChars,
+  detectBatchMood,
+  detectToneFromKorean,
+} from "./translation-utils";
+
+// API config
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8020/api/v1";
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 1000;
+const MAX_BACKOFF_MS = 30000;
+
+// Parallel execution: concurrency limiter
+const PARALLEL_CONCURRENCY = 3;
+
+async function runParallel<T>(
+  tasks: (() => Promise<T>)[],
+  concurrency: number = PARALLEL_CONCURRENCY,
+  signal?: AbortSignal
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let nextIdx = 0;
+
+  async function worker() {
+    while (nextIdx < tasks.length) {
+      if (signal?.aborted) break;
+      const idx = nextIdx++;
+      if (idx >= tasks.length) break;
+      results[idx] = await tasks[idx]();
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, tasks.length) },
+    () => worker()
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+// Module-level abort controller for cancellation
+let abortController: AbortController | null = null;
+
+// ====== fetchWithRetry ======
+export async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = MAX_RETRIES
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+      const mergedSignal = options.signal;
+      if (mergedSignal) {
+        mergedSignal.addEventListener("abort", () => controller.abort());
+      }
+
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) return response;
+      if (response.status >= 500) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+      return response;
+    } catch (error) {
+      lastError = error as Error;
+      if (error instanceof Error && error.name === "AbortError") {
+        if (abortController?.signal.aborted) throw error;
+        console.warn(`[WARN] Request timed out on attempt ${attempt + 1}`);
+      }
+      if (attempt < maxRetries - 1) {
+        const backoff = Math.min(
+          INITIAL_BACKOFF_MS * Math.pow(2, attempt),
+          MAX_BACKOFF_MS
+        );
+        console.log(`[INFO] Retrying in ${backoff}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+      }
+    }
+  }
+  throw lastError || new Error("Request failed after retries");
+}
+
+// ====== Store helpers ======
+function getStore() {
+  return useTranslateStore.getState();
+}
+function addLog(message: string) {
+  getStore().addLog(message);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phase 4: Semantic Batching
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function buildSemanticBatches(subtitles: SubtitleBlock[]): SemanticBatch[] {
+  if (subtitles.length === 0) return [];
+
+  const MIN_BATCH = 20;
+  const MAX_BATCH = 40;
+  const SCENE_GAP_SEC = 2.5;
+
+  const batches: SemanticBatch[] = [];
+  let currentBatch: SubtitleBlock[] = [];
+  let batchStart = 0;
+
+  for (let i = 0; i < subtitles.length; i++) {
+    currentBatch.push(subtitles[i]);
+
+    // Check if we should split here
+    let shouldSplit = false;
+    let isSceneBreak = false;
+
+    if (i < subtitles.length - 1) {
+      const currentEnd = parseTimecodeToSeconds(subtitles[i].end);
+      const nextStart = parseTimecodeToSeconds(subtitles[i + 1].start);
+      const gap = nextStart - currentEnd;
+
+      // Scene break: gap > 2.5s AND batch >= MIN_BATCH
+      if (gap > SCENE_GAP_SEC && currentBatch.length >= MIN_BATCH) {
+        shouldSplit = true;
+        isSceneBreak = true;
+      }
+
+      // Hard max: batch >= MAX_BATCH → split at sentence boundary
+      if (currentBatch.length >= MAX_BATCH) {
+        // Look back 5 items for sentence-ending punctuation
+        const lookback = Math.min(5, currentBatch.length - MIN_BATCH);
+        let splitFound = false;
+        for (let j = 0; j < lookback; j++) {
+          const checkIdx = currentBatch.length - 1 - j;
+          const text = currentBatch[checkIdx].en;
+          if (text && /[.?!]$/.test(text.trim())) {
+            // Split after this item; push remainder back
+            const kept = currentBatch.slice(0, checkIdx + 1);
+            const remainder = currentBatch.slice(checkIdx + 1);
+            currentBatch = kept;
+            // Push batch
+            batches.push({
+              startIdx: batchStart,
+              endIdx: batchStart + kept.length - 1,
+              blocks: [...kept],
+              sceneBreak: false,
+              batchMood: detectBatchMood(kept),
+            });
+            currentBatch = [...remainder];
+            batchStart = batchStart + kept.length;
+            splitFound = true;
+            break;
+          }
+        }
+        if (!splitFound) {
+          shouldSplit = true;
+        }
+      }
+    }
+
+    if (shouldSplit && currentBatch.length > 0) {
+      batches.push({
+        startIdx: batchStart,
+        endIdx: batchStart + currentBatch.length - 1,
+        blocks: [...currentBatch],
+        sceneBreak: isSceneBreak,
+        batchMood: detectBatchMood(currentBatch),
+      });
+      batchStart = batchStart + currentBatch.length;
+      currentBatch = [];
+    }
+  }
+
+  // Flush remaining
+  if (currentBatch.length > 0) {
+    // Merge tiny last batch into previous
+    if (currentBatch.length < 4 && batches.length > 0) {
+      const prev = batches[batches.length - 1];
+      prev.blocks.push(...currentBatch);
+      prev.endIdx = prev.startIdx + prev.blocks.length - 1;
+      prev.batchMood = detectBatchMood(prev.blocks);
+    } else {
+      batches.push({
+        startIdx: batchStart,
+        endIdx: batchStart + currentBatch.length - 1,
+        blocks: [...currentBatch],
+        sceneBreak: false,
+        batchMood: detectBatchMood(currentBatch),
+      });
+    }
+  }
+
+  return batches;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phase 5: Speaker Identification (Pass 0)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function identifySpeakers(
+  subtitles: SubtitleBlock[]
+): Promise<SubtitleBlock[]> {
+  const store = getStore();
+  const { strategyBlueprint, metadata } = store;
+  const updated = [...subtitles];
+
+  const SPEAKER_BATCH_SIZE = 50;
+  const totalBatches = Math.ceil(subtitles.length / SPEAKER_BATCH_SIZE);
+  const allSpeakers = new Set<string>();
+  const dialogueSamples: Record<string, string[]> = {};
+
+  addLog(`> [Pass 0] 화자 식별 시작 (${totalBatches}개 배치)...`);
+
+  const synopsisParts = [
+    metadata?.detailed_plot,
+    metadata?.omdb_full_plot,
+    metadata?.wikipedia_plot,
+    metadata?.synopsis,
+  ].filter(Boolean);
+  const synopsis = synopsisParts.join("\n\n").slice(0, 3000) || "";
+
+  const personas =
+    strategyBlueprint?.character_personas
+      ?.map((p) => {
+        let line = `${p.name}`;
+        if (p.gender) line += ` (${p.gender})`;
+        if (p.role) line += ` [${p.role}]`;
+        line += `: ${p.description}`;
+        line += ` | 말투: ${p.speech_style}`;
+        if (p.speech_level_default) line += ` | 기본: ${p.speech_level_default}`;
+        if (p.speech_pattern_markers) line += ` | 특징: ${p.speech_pattern_markers}`;
+        return line;
+      })
+      .join("\n") || "";
+
+  for (let i = 0; i < totalBatches; i++) {
+    if (abortController?.signal.aborted) break;
+
+    // Pass 0 진행률: 1% → 10% 구간에서 점진적 업데이트
+    const pass0Progress = Math.floor(1 + ((i + 1) / totalBatches) * 9);
+    store.setProcessingProgress(pass0Progress);
+    addLog(`  > [Pass 0] 화자 식별 배치 ${i + 1}/${totalBatches}...`);
+
+    const start = i * SPEAKER_BATCH_SIZE;
+    const end = Math.min(start + SPEAKER_BATCH_SIZE, subtitles.length);
+    const chunk = subtitles.slice(start, end);
+
+    const isLast = i === totalBatches - 1;
+
+    // Collect prev_identified from already processed blocks
+    const prevIdentified = updated
+      .slice(Math.max(0, start - 10), start)
+      .filter((s) => s.speaker)
+      .map((s) => ({ index: s.id, speaker: s.speaker }));
+
+    try {
+      const res = await fetchWithRetry(
+        `${API_BASE}/subtitles/identify-speakers`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: abortController?.signal,
+          body: JSON.stringify({
+            blocks: chunk.map((s) => ({
+              index: s.id,
+              start: s.start,
+              end: s.end,
+              text: s.en,
+            })),
+            title: metadata?.title || "",
+            synopsis,
+            genre:
+              strategyBlueprint?.content_analysis?.genre ||
+              metadata?.genre?.join(", ") ||
+              "",
+            personas,
+            prev_identified: prevIdentified.length > 0 ? prevIdentified : null,
+            generate_relationships: isLast,
+            all_speakers: isLast ? Array.from(allSpeakers) : null,
+            dialogue_samples: isLast ? dialogueSamples : null,
+          }),
+        }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+
+        if (data.speakers && Array.isArray(data.speakers)) {
+          for (const sp of data.speakers) {
+            const idx = updated.findIndex((s) => s.id === sp.index);
+            if (idx !== -1) {
+              updated[idx] = {
+                ...updated[idx],
+                speaker: sp.speaker || undefined,
+                speakerConfidence: sp.confidence || "medium",
+              };
+              if (sp.speaker) {
+                allSpeakers.add(sp.speaker);
+                if (!dialogueSamples[sp.speaker]) {
+                  dialogueSamples[sp.speaker] = [];
+                }
+                if (dialogueSamples[sp.speaker].length < 5) {
+                  dialogueSamples[sp.speaker].push(updated[idx].en);
+                }
+              }
+            }
+          }
+        }
+
+        // On last batch, store relationships
+        if (isLast && data.relationships) {
+          store.setCharacterRelations(data.relationships);
+          const relCount = Object.keys(data.relationships).length;
+          addLog(`  ✓ [Pass 0] 관계 맵 생성 완료 (${relCount}쌍)`);
+        }
+      }
+    } catch (err) {
+      if (abortController?.signal.aborted) break;
+      console.error(`[Speaker-ID] Batch ${i + 1} failed:`, err);
+      addLog(`  ⚠ [Pass 0] 화자 식별 배치 ${i + 1} 실패`);
+    }
+  }
+
+  const identified = updated.filter((s) => s.speaker).length;
+  addLog(
+    `  ✓ [Pass 0] 화자 식별 완료: ${identified}/${subtitles.length}개 (${allSpeakers.size}명)`
+  );
+  store.setSpeakerIdentified(true);
+
+  return updated;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phase 6: Addressee Estimation + Speech Policy (Pass 0.5)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phase 5.5: Tone Archetype Assignment (Pass 0.5 pre-step)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function assignToneArchetypes(): void {
+  const store = getStore();
+  const personas = store.strategyBlueprint?.character_personas;
+  if (!personas || personas.length === 0) return;
+
+  const archetypeKeywords: Record<string, string[]> = {
+    A: ["sly", "sarcastic", "witty", "cunning", "veteran", "con", "charm", "ironic", "cynical", "manipulat", "사기", "능청", "비꼼", "여유", "베테랑"],
+    B: ["passionate", "direct", "brave", "hot-headed", "heroic", "action", "determined", "child", "kid", "주인공", "열정", "직설", "단호"],
+    C: ["calm", "intellectual", "scholar", "formal", "educated", "aristocrat", "investigat", "학자", "귀족", "조사", "차분", "지적", "격식"],
+    D: ["rough", "rebellious", "villain", "beast", "raw", "rude", "aggressive", "brutal", "thug", "악당", "반항", "거침", "날것"],
+  };
+
+  let assignedCount = 0;
+
+  for (const persona of personas) {
+    if (persona.tone_archetype) continue;
+
+    const haystack = [
+      persona.personality || "",
+      persona.description || "",
+      persona.role || "",
+      persona.speech_style || "",
+    ].join(" ").toLowerCase();
+
+    let matched = false;
+    for (const [archetype, keywords] of Object.entries(archetypeKeywords)) {
+      if (keywords.some((kw) => haystack.includes(kw))) {
+        persona.tone_archetype = archetype as "A" | "B" | "C" | "D";
+        matched = true;
+        assignedCount++;
+        break;
+      }
+    }
+
+    if (!matched) {
+      persona.tone_archetype = "B";
+      assignedCount++;
+    }
+  }
+
+  if (assignedCount > 0) {
+    addLog(`  ✓ [Pass 0.5 pre] Tone Archetype 할당: ${assignedCount}명 (${personas.map((p) => `${p.name}=${p.tone_archetype}`).join(", ")})`);
+  }
+}
+
+function estimateAddressees(subtitles: SubtitleBlock[]): SubtitleBlock[] {
+  const updated = [...subtitles];
+  const SCENE_GAP_SEC = 2.5;
+  const DIALOGUE_GAP_SEC = 6;
+
+  // Session Buffer: tracks the dominant conversation pair within a scene
+  let sessionMainPair: { a: string; b: string } | null = null;
+
+  for (let i = 0; i < updated.length; i++) {
+    if (updated[i].addressee) continue;
+
+    const currentSpeaker = updated[i].speaker;
+    if (!currentSpeaker) continue;
+
+    // Scene break detection → reset session
+    if (i > 0) {
+      const gap =
+        parseTimecodeToSeconds(updated[i].start) -
+        parseTimecodeToSeconds(updated[i - 1].end);
+      if (gap > SCENE_GAP_SEC) {
+        sessionMainPair = null;
+      }
+    }
+
+    // Rule 1: Previous block has a different speaker → that's the addressee + register Main Pair
+    if (i > 0 && updated[i - 1].speaker && updated[i - 1].speaker !== currentSpeaker) {
+      const prevSpeaker = updated[i - 1].speaker!;
+      updated[i] = { ...updated[i], addressee: prevSpeaker };
+      // Register/update Main Pair
+      if (!sessionMainPair) {
+        sessionMainPair = { a: currentSpeaker, b: prevSpeaker };
+      } else {
+        // Update if this pair is the same main pair (either direction)
+        const isExisting =
+          (sessionMainPair.a === currentSpeaker && sessionMainPair.b === prevSpeaker) ||
+          (sessionMainPair.a === prevSpeaker && sessionMainPair.b === currentSpeaker);
+        if (!isExisting) {
+          // New dominant pair replaces old
+          sessionMainPair = { a: currentSpeaker, b: prevSpeaker };
+        }
+      }
+      continue;
+    }
+
+    // Rule 2: Same speaker consecutive (within 6s) → inherit addressee
+    if (i > 0 && updated[i - 1].speaker === currentSpeaker && updated[i - 1].addressee) {
+      const gap =
+        parseTimecodeToSeconds(updated[i].start) -
+        parseTimecodeToSeconds(updated[i - 1].end);
+      if (gap <= DIALOGUE_GAP_SEC) {
+        updated[i] = { ...updated[i], addressee: updated[i - 1].addressee };
+        continue;
+      }
+    }
+
+    // Rule 3 (NEW): Session Buffer recovery — if speaker is part of Main Pair, recover partner
+    if (sessionMainPair) {
+      if (currentSpeaker === sessionMainPair.a) {
+        updated[i] = { ...updated[i], addressee: sessionMainPair.b };
+      } else if (currentSpeaker === sessionMainPair.b) {
+        updated[i] = { ...updated[i], addressee: sessionMainPair.a };
+      }
+    }
+  }
+
+  return updated;
+}
+
+function buildSpeechPolicies(
+  relations: Record<string, string>,
+  source: "strategy" | "llm"
+): Record<string, SpeechPolicy> {
+  const policies: Record<string, SpeechPolicy> = {};
+  const baseConfidence = source === "strategy" ? 1.0 : 0.8;
+
+  for (const [pair, description] of Object.entries(relations)) {
+    const desc = description.toLowerCase();
+    let policyType: SpeechPolicyType = "UNDETERMINED";
+
+    if (
+      desc.includes("반말") ||
+      desc.includes("친구") ||
+      desc.includes("동급") ||
+      desc.includes("casual") ||
+      desc.includes("informal")
+    ) {
+      policyType = "CASUAL_LOCK";
+    } else if (
+      desc.includes("존댓말") ||
+      desc.includes("경어") ||
+      desc.includes("상사") ||
+      desc.includes("formal") ||
+      desc.includes("honorific") ||
+      desc.includes("부하")
+    ) {
+      policyType = "HONORIFIC_LOCK";
+    }
+
+    policies[pair] = {
+      type: policyType,
+      confidence: baseConfidence,
+      sampleCount: 0,
+      source,
+    };
+  }
+
+  return policies;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phase 7: Tone Memory Extraction
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function extractToneFromBatch(
+  blocks: SubtitleBlock[],
+  existingMemory: ToneMemoryEntry[]
+): ToneMemoryEntry[] {
+  const newEntries: ToneMemoryEntry[] = [...existingMemory];
+
+  for (const block of blocks) {
+    if (!block.ko || !block.speaker) continue;
+
+    const tone = detectToneFromKorean(block.ko);
+    if (!tone) continue;
+
+    const entry: ToneMemoryEntry = {
+      speaker: block.speaker,
+      addressee: block.addressee || "unknown",
+      tone,
+      lastSeenAt: block.id,
+    };
+
+    // Update existing or add new
+    const existingIdx = newEntries.findIndex(
+      (e) => e.speaker === entry.speaker && e.addressee === entry.addressee
+    );
+    if (existingIdx !== -1) {
+      newEntries[existingIdx] = entry;
+    } else {
+      newEntries.push(entry);
+    }
+  }
+
+  // Keep only last 100 entries
+  return newEntries.slice(-100);
+}
+
+function updateConfirmedSpeechLevels(
+  blocks: SubtitleBlock[],
+  existing: Record<string, ConfirmedSpeechLevel>,
+  opts?: { sceneBreak?: boolean; prevMood?: string; currentMood?: string }
+): Record<string, ConfirmedSpeechLevel> {
+  const levels = { ...existing };
+
+  // Scene-break or mood-shift unlock: 씬 전환이나 무드 급변 시 lock 해제
+  if (opts?.sceneBreak || (opts?.prevMood && opts?.currentMood && opts.prevMood !== opts.currentMood)) {
+    for (const key of Object.keys(levels)) {
+      if (levels[key].locked) {
+        levels[key] = { ...levels[key], locked: false };
+      }
+    }
+  }
+
+  for (const block of blocks) {
+    if (!block.ko || !block.speaker) continue;
+
+    const key = `${block.speaker} → ${block.addressee || "general"}`;
+    const tone = detectToneFromKorean(block.ko);
+
+    if (!levels[key]) {
+      levels[key] = {
+        level: "undetermined",
+        confirmedAt: block.id,
+        honorificCount: 0,
+        banmalCount: 0,
+        locked: false,
+      };
+    }
+
+    if (tone === "formal") {
+      levels[key].honorificCount++;
+    } else if (tone === "informal") {
+      levels[key].banmalCount++;
+    }
+
+    // Lock if 95%+ ratio with ≥5 samples
+    const total = levels[key].honorificCount + levels[key].banmalCount;
+    if (total >= 5 && !levels[key].locked) {
+      const ratio = levels[key].honorificCount / total;
+      if (ratio >= 0.95) {
+        levels[key].level = "honorific";
+        levels[key].locked = true;
+        levels[key].confirmedAt = block.id;
+      } else if (ratio <= 0.05) {
+        levels[key].level = "banmal";
+        levels[key].locked = true;
+        levels[key].confirmedAt = block.id;
+      }
+    }
+  }
+
+  return levels;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Response Parsing (shared by all passes)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function parseTranslationResponse(
+  data: Record<string, unknown>
+): Array<{ index: number; text: string }> {
+  const results: Array<{ index: number; text: string }> = [];
+
+  if (data.data && Array.isArray(data.data)) {
+    for (const batch of data.data as Array<{
+      batch_index?: number;
+      content: unknown;
+    }>) {
+      let translations: Array<{ index: number; text: string }> = [];
+
+      if (Array.isArray(batch.content)) {
+        translations = batch.content;
+      } else if (typeof batch.content === "string") {
+        try {
+          const cleaned = (batch.content as string)
+            .replace(/```json\s*/gi, "")
+            .replace(/```\s*/g, "")
+            .trim();
+          const jsonStart = cleaned.indexOf("[");
+          const jsonEnd = cleaned.lastIndexOf("]");
+          if (jsonStart !== -1 && jsonEnd > jsonStart) {
+            translations = JSON.parse(
+              cleaned.substring(jsonStart, jsonEnd + 1)
+            );
+          }
+        } catch {
+          /* skip parse error */
+        }
+      }
+
+      results.push(...translations);
+    }
+  }
+  return results;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Main Translation Function (V3)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export async function executeTranslation(): Promise<void> {
+  const store = getStore();
+
+  if (store.translationRunning) {
+    console.warn(
+      "[TranslationService] Already running, ignoring duplicate call"
+    );
+    return;
+  }
+
+  const { subtitles, strategyBlueprint, metadata, srtFileName } = store;
+
+  console.log(
+    "[TranslationService] ========== V3 executeTranslation START =========="
+  );
+  addLog("[V3] Cinema Engine 번역 시작");
+
+  if (subtitles.length === 0) {
+    console.error("[TranslationService] No subtitles to translate!");
+    addLog("[ERROR] 자막이 없습니다!");
+    return;
+  }
+
+  abortController = new AbortController();
+  store.setLoading(true);
+  store.setTranslationRunning(true);
+  store.setProcessingProgress(0);
+
+  try {
+    let updatedSubtitles: SubtitleBlock[] = [...subtitles];
+    let totalApplied = 0;
+
+    // ═══════════════════════════════════════════════════════════════
+    // Pass 0: Speaker Identification [0% → 10%]
+    // ═══════════════════════════════════════════════════════════════
+    if (!abortController.signal.aborted) {
+      store.setProcessingProgress(1);
+      updatedSubtitles = await identifySpeakers(updatedSubtitles);
+      store.setSubtitles([...updatedSubtitles]);
+      store.setProcessingProgress(10);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Pass 0.5: Addressee Estimation + Speech Policy [10% → 12%]
+    // ═══════════════════════════════════════════════════════════════
+    if (!abortController.signal.aborted) {
+      addLog("> [Pass 0.5] Tone Archetype 할당 + 청자 추정 + 말투 정책 빌드...");
+
+      assignToneArchetypes();
+      updatedSubtitles = estimateAddressees(updatedSubtitles);
+      store.setSubtitles([...updatedSubtitles]);
+
+      // Build speech policies from strategy relations
+      const strategyRelations: Record<string, string> = {};
+      if (strategyBlueprint?.character_personas) {
+        for (const p of strategyBlueprint.character_personas) {
+          if (p.relationships) {
+            strategyRelations[p.name] = p.relationships;
+          }
+        }
+      }
+      // V3: character_relationships 양방향 관계 맵도 통합
+      if (strategyBlueprint?.character_relationships) {
+        for (const rel of strategyBlueprint.character_relationships) {
+          if (rel.from_char && rel.to_char) {
+            const key = `${rel.from_char} → ${rel.to_char}`;
+            const val = [
+              rel.speech_level,
+              rel.honorific ? `호칭: ${rel.honorific}` : "",
+              rel.note,
+            ].filter(Boolean).join(", ");
+            if (val) strategyRelations[key] = val;
+          }
+        }
+      }
+
+      // Merge strategy + LLM relations
+      const llmRelations = store.characterRelations;
+      const allRelations = { ...llmRelations };
+      for (const [k, v] of Object.entries(strategyRelations)) {
+        if (!allRelations[k]) allRelations[k] = v;
+      }
+
+      const policies = buildSpeechPolicies(
+        allRelations,
+        Object.keys(strategyRelations).length > 0 ? "strategy" : "llm"
+      );
+
+      // Convert policies to confirmed speech levels
+      const confirmedLevels: Record<string, ConfirmedSpeechLevel> = {};
+      for (const [pair, policy] of Object.entries(policies)) {
+        if (policy.type !== "UNDETERMINED") {
+          confirmedLevels[pair] = {
+            level:
+              policy.type === "CASUAL_LOCK" ? "banmal" : "honorific",
+            confirmedAt: 0,
+            honorificCount: policy.type === "HONORIFIC_LOCK" ? 1 : 0,
+            banmalCount: policy.type === "CASUAL_LOCK" ? 1 : 0,
+            locked: policy.confidence >= 1.0,
+          };
+        }
+      }
+      store.setConfirmedSpeechLevels(confirmedLevels);
+
+      const addrCount = updatedSubtitles.filter((s) => s.addressee).length;
+      addLog(
+        `  ✓ [Pass 0.5] 청자 추정 ${addrCount}개, 말투 정책 ${Object.keys(policies).length}개`
+      );
+      store.setProcessingProgress(12);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Pass 0.7: Context-Aware Filtering (상황 인식 말투 보정)
+    // 원문의 공적 호칭/제3자 언급을 감지하여 말투 정책을 강제 보정
+    // ═══════════════════════════════════════════════════════════════
+    if (!abortController?.signal.aborted) {
+      const honorificPatterns = /\b(sir|ma'am|officer|detective|captain|sergeant|chief|doctor|dr\.|professor|your honor|judge|senator|president|mr\.|mrs\.|ms\.|miss)\b/i;
+      let contextFixCount = 0;
+
+      for (let i = 0; i < updatedSubtitles.length; i++) {
+        const block = updatedSubtitles[i];
+        if (!block.en) continue;
+
+        // 공적 호칭 감지 → 해당 블록의 존대 트랙 강제
+        if (honorificPatterns.test(block.en)) {
+          const speaker = block.speaker || "UNKNOWN";
+          const addressee = block.addressee || "UNKNOWN";
+          const pairKey = `${speaker} → ${addressee}`;
+          const currentLevels = getStore().confirmedSpeechLevels;
+
+          // 이미 LOCK된 경우 건드리지 않음
+          if (!currentLevels[pairKey]?.locked) {
+            const existingLevel = currentLevels[pairKey];
+            store.setConfirmedSpeechLevels({
+              ...currentLevels,
+              [pairKey]: {
+                level: "존댓말",
+                confirmedAt: i,
+                honorificCount: (existingLevel?.honorificCount || 0) + 2,
+                banmalCount: existingLevel?.banmalCount || 0,
+                locked: false,
+              },
+            });
+            contextFixCount++;
+          }
+        }
+      }
+
+      if (contextFixCount > 0) {
+        addLog(`  ✓ [Pass 0.7] 공적 호칭 ${contextFixCount}건 감지 → 존대 트랙 보정`);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Pass 1: Semantic Batch Translation [12% → 80%]
+    // ═══════════════════════════════════════════════════════════════
+    const semanticBatches = buildSemanticBatches(updatedSubtitles);
+    const numBatches = semanticBatches.length;
+    store.setTotalBatches(numBatches);
+    store.setCurrentBatch(0);
+
+    addLog(
+      `> [Pass 1] 시맨틱 배칭: ${subtitles.length}개 자막 → ${numBatches}개 배치 (동적 ${semanticBatches.map((b) => b.blocks.length).join("/")}개)`
+    );
+
+    const failedBatches = new Set<number>();
+    const contextSize = 10;
+
+    // Shared metadata for all batches
+    const detailedPersonas =
+      strategyBlueprint?.character_personas
+        ?.map((p) => {
+          let line = `${p.name}`;
+          if (p.gender) line += ` (${p.gender})`;
+          if (p.role) line += ` [${p.role}]`;
+          if (p.tone_archetype) line += ` <Type ${p.tone_archetype}>`;
+          line += `: ${p.description}`;
+          line += ` | 말투: ${p.speech_style}`;
+          if (p.speech_level_default) line += ` | 기본: ${p.speech_level_default}`;
+          if (p.speech_pattern_markers) line += ` | 특징: ${p.speech_pattern_markers}`;
+          return line;
+        })
+        .join("\n") || "General";
+
+    const fixedTerms =
+      strategyBlueprint?.fixed_terms
+        ?.map((t) => `${t.original} → ${t.translation}`)
+        .join(", ") || "";
+
+    const synopsisParts = [
+      metadata?.detailed_plot,
+      metadata?.omdb_full_plot,
+      metadata?.wikipedia_plot,
+      metadata?.synopsis,
+      strategyBlueprint?.content_analysis?.summary,
+    ].filter(Boolean);
+    const fullSynopsis = synopsisParts.join("\n\n") || "";
+
+    const processBatch = async (
+      batchIdx: number,
+      isRetry = false
+    ): Promise<boolean> => {
+      if (abortController?.signal.aborted) {
+        throw new Error("Translation cancelled");
+      }
+
+      const retryLabel = isRetry ? " (재시도)" : "";
+      store.setCurrentBatch(batchIdx + 1);
+
+      const batch = semanticBatches[batchIdx];
+      const batchBlocks = batch.blocks.map((s) => {
+        const duration = computeBlockDuration(s);
+        const maxChars = computeMaxChars(duration);
+        const cpsWarning =
+          duration < 2.0
+            ? `[${duration.toFixed(1)}초] ${maxChars}자 이내 요약`
+            : undefined;
+
+        return {
+          index: s.id,
+          start: s.start,
+          end: s.end,
+          text: sanitizeSubtitleText(s.en),
+          speaker: s.speaker,
+          addressee: s.addressee,
+          duration_sec: duration,
+          max_chars: maxChars,
+          cps_warning: cpsWarning,
+        };
+      });
+
+      // Previous batch context
+      const globalStartIdx = batch.startIdx;
+      const prevContext =
+        globalStartIdx > 0
+          ? updatedSubtitles
+              .slice(
+                Math.max(0, globalStartIdx - contextSize),
+                globalStartIdx
+              )
+              .filter((s) => s.ko)
+              .map((s) => ({
+                index: s.id,
+                original: s.en,
+                translated: s.ko,
+              }))
+          : [];
+
+      addLog(
+        `> [${batchIdx + 1}/${numBatches}]${retryLabel} 자막 ${batchBlocks[0]?.index}~${batchBlocks[batchBlocks.length - 1]?.index} (${batchBlocks.length}개) 번역 중...`
+      );
+
+      let res: Response;
+      try {
+        res = await fetchWithRetry(
+          `${API_BASE}/subtitles/batch-translate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: abortController?.signal,
+            body: JSON.stringify({
+              blocks: batchBlocks,
+              title:
+                metadata?.title ||
+                strategyBlueprint?.content_analysis?.estimated_title ||
+                "Unknown",
+              synopsis: fullSynopsis,
+              genre:
+                strategyBlueprint?.content_analysis?.genre ||
+                metadata?.genre?.join(", ") ||
+                "Drama",
+              personas: detailedPersonas,
+              fixed_terms: fixedTerms,
+              translation_rules:
+                strategyBlueprint?.translation_rules?.join("\n") || "",
+              target_lang: "ko",
+              prev_context: prevContext,
+              // V3: 화자 정보 + 톤 메모리
+              character_relations: getStore().characterRelations,
+              confirmed_speech_levels:
+                getStore().confirmedSpeechLevels,
+              tone_memory: getStore().globalToneMemory.slice(-50),
+              batch_mood: batch.batchMood,
+              content_rating: metadata?.rated || "",
+            }),
+          }
+        );
+      } catch (fetchErr) {
+        if (abortController?.signal.aborted) throw fetchErr;
+        addLog(
+          `  ⚠ [${batchIdx + 1}]${retryLabel} 요청 실패`
+        );
+        console.error(
+          `[TranslationService] Batch ${batchIdx + 1} fetch failed:`,
+          fetchErr
+        );
+        return false;
+      }
+
+      if (!res.ok) {
+        addLog(
+          `  ⚠ [${batchIdx + 1}]${retryLabel} API 실패 (${res.status})`
+        );
+        return false;
+      }
+
+      const data = await res.json();
+      let batchTranslatedCount = 0;
+
+      if (data.status === "error") {
+        addLog(
+          `  ⚠ [${batchIdx + 1}]${retryLabel} 번역 오류: ${data.error}`
+        );
+        return false;
+      }
+
+      if (data.truncated) {
+        addLog(
+          `  ⚠ [${batchIdx + 1}]${retryLabel} 응답 잘림 (예상: ${data.expected_count}, 수신: ${data.received_count})`
+        );
+      }
+
+      const translations = parseTranslationResponse(data);
+
+      // V3: 현재 배치 블록의 유효 ID 집합 — prev_context 환각 방어
+      const validIds = new Set(batch.blocks.map((b) => b.id));
+
+      for (let i = 0; i < translations.length; i++) {
+        const trans = translations[i];
+
+        // 현재 배치에 속하지 않는 index는 무시 (prev_context 환각 방어)
+        if (!validIds.has(trans.index)) continue;
+
+        let subIdx = updatedSubtitles.findIndex(
+          (s) => s.id === trans.index
+        );
+
+        if (subIdx === -1 && i < batch.blocks.length) {
+          const expectedPosition = batch.startIdx + i;
+          if (expectedPosition < updatedSubtitles.length) {
+            subIdx = expectedPosition;
+          }
+        }
+
+        if (subIdx !== -1) {
+          updatedSubtitles[subIdx] = {
+            ...updatedSubtitles[subIdx],
+            ko: trans.text,
+          };
+          totalApplied++;
+          batchTranslatedCount++;
+        }
+      }
+
+      // Progress: 12% to 80% range
+      const progress = Math.floor(
+        12 + ((batchIdx + 1) / numBatches) * 68
+      );
+      store.setProcessingProgress(progress);
+      addLog(
+        `  ✓ [${batchIdx + 1}/${numBatches}]${retryLabel} 완료 (+${batchTranslatedCount}개, 총 ${totalApplied}개)`
+      );
+
+      // Live update
+      store.setSubtitles([...updatedSubtitles]);
+
+      // V3: Extract tone memory from this batch
+      const batchResultBlocks = updatedSubtitles.slice(
+        batch.startIdx,
+        batch.startIdx + batch.blocks.length
+      );
+      const newMemory = extractToneFromBatch(
+        batchResultBlocks,
+        getStore().globalToneMemory
+      );
+      store.setGlobalToneMemory(newMemory);
+
+      // Update confirmed speech levels (with scene-break/mood-shift unlock)
+      const prevBatchMood = batchIdx > 0 ? semanticBatches[batchIdx - 1].batchMood : undefined;
+      const newLevels = updateConfirmedSpeechLevels(
+        batchResultBlocks,
+        getStore().confirmedSpeechLevels,
+        {
+          sceneBreak: batch.sceneBreak,
+          prevMood: prevBatchMood,
+          currentMood: batch.batchMood,
+        }
+      );
+      store.setConfirmedSpeechLevels(newLevels);
+
+      return batchTranslatedCount > 0;
+    };
+
+    // Execute batches in parallel groups (PARALLEL_CONCURRENCY at a time)
+    for (let groupStart = 0; groupStart < numBatches; groupStart += PARALLEL_CONCURRENCY) {
+      if (abortController?.signal.aborted) break;
+      const groupEnd = Math.min(groupStart + PARALLEL_CONCURRENCY, numBatches);
+      const groupIndices = Array.from({ length: groupEnd - groupStart }, (_, i) => groupStart + i);
+
+      if (groupIndices.length > 1) {
+        addLog(`  ⚡ [병렬] 배치 ${groupStart + 1}~${groupEnd} 동시 처리 중...`);
+      }
+
+      const tasks = groupIndices.map((batchIdx) => async () => {
+        if (abortController?.signal.aborted) return false;
+        return processBatch(batchIdx);
+      });
+
+      const results = await runParallel(tasks, PARALLEL_CONCURRENCY, abortController?.signal);
+
+      for (let i = 0; i < results.length; i++) {
+        if (!results[i]) {
+          failedBatches.add(groupIndices[i]);
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Pass 2: Retry Failed Batches [80% → 85%]
+    // ═══════════════════════════════════════════════════════════════
+    if (failedBatches.size > 0 && !abortController?.signal.aborted) {
+      addLog(
+        `> [Pass 2] ${failedBatches.size}개 실패 배치 재시도 중...`
+      );
+
+      const retryArr = Array.from(failedBatches);
+      for (let ri = 0; ri < retryArr.length; ri++) {
+        if (abortController?.signal.aborted) break;
+        const batchIdx = retryArr[ri];
+        addLog(`  > [Pass 2] 재시도 ${ri + 1}/${retryArr.length} (배치 ${batchIdx + 1})...`);
+        const retryProgress = Math.floor(80 + ((ri + 1) / retryArr.length) * 5);
+        store.setProcessingProgress(retryProgress);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const retrySuccess = await processBatch(batchIdx, true);
+        if (retrySuccess) {
+          failedBatches.delete(batchIdx);
+        }
+      }
+
+      if (failedBatches.size > 0) {
+        addLog(
+          `  ⚠ ${failedBatches.size}개 배치 최종 실패: ${Array.from(failedBatches).map((i) => i + 1).join(", ")}`
+        );
+      }
+    }
+    store.setProcessingProgress(85);
+
+    // ═══════════════════════════════════════════════════════════════
+    // Pass 3: Missing Block Fill [85% → 90%]
+    // ═══════════════════════════════════════════════════════════════
+    if (!abortController?.signal.aborted) {
+      const untranslated = updatedSubtitles
+        .map((s, idx) => ({ ...s, _idx: idx }))
+        .filter((s) => !s.ko || s.ko.trim() === "");
+
+      if (
+        untranslated.length > 0 &&
+        untranslated.length <= subtitles.length * 0.5
+      ) {
+        addLog(
+          `> [Pass 3] 미번역 ${untranslated.length}개 보충 번역 시작...`
+        );
+
+        const fillBatchSize = 10;
+        const fillBatches = Math.ceil(
+          untranslated.length / fillBatchSize
+        );
+
+        addLog(`  ⚡ [Pass 3] ${fillBatches}개 보충 배치 병렬 처리 중...`);
+
+        const fillTasks = Array.from({ length: fillBatches }, (_, i) => async () => {
+          if (abortController?.signal.aborted) return;
+
+          const chunk = untranslated.slice(
+            i * fillBatchSize,
+            (i + 1) * fillBatchSize
+          );
+          const fillBlocks = chunk.map((s) => ({
+            index: s.id,
+            start: s.start,
+            end: s.end,
+            text: sanitizeSubtitleText(s.en),
+            speaker: s.speaker,
+            addressee: s.addressee,
+            duration_sec: computeBlockDuration(s),
+            max_chars: computeMaxChars(computeBlockDuration(s)),
+          }));
+
+          const firstIdx = chunk[0]._idx;
+          const prevContext = updatedSubtitles
+            .slice(Math.max(0, firstIdx - 5), firstIdx)
+            .filter((s) => s.ko)
+            .map((s) => ({
+              index: s.id,
+              original: s.en,
+              translated: s.ko,
+            }));
+
+          try {
+            const res = await fetchWithRetry(
+              `${API_BASE}/subtitles/batch-translate`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                signal: abortController?.signal,
+                body: JSON.stringify({
+                  blocks: fillBlocks,
+                  title:
+                    metadata?.title ||
+                    strategyBlueprint?.content_analysis
+                      ?.estimated_title ||
+                    "Unknown",
+                  synopsis: fullSynopsis.slice(0, 500),
+                  genre:
+                    strategyBlueprint?.content_analysis?.genre ||
+                    metadata?.genre?.join(", ") ||
+                    "Drama",
+                  personas: detailedPersonas,
+                  fixed_terms: fixedTerms,
+                  translation_rules:
+                    strategyBlueprint?.translation_rules?.join(
+                      "\n"
+                    ) || "",
+                  target_lang: "ko",
+                  prev_context: prevContext,
+                  character_relations:
+                    getStore().characterRelations,
+                  confirmed_speech_levels:
+                    getStore().confirmedSpeechLevels,
+                }),
+              }
+            );
+
+            if (res.ok) {
+              const data = await res.json();
+              const translations = parseTranslationResponse(data);
+              for (const trans of translations) {
+                const subIdx = updatedSubtitles.findIndex(
+                  (s) => s.id === trans.index
+                );
+                if (
+                  subIdx !== -1 &&
+                  (!updatedSubtitles[subIdx].ko ||
+                    updatedSubtitles[subIdx].ko.trim() === "")
+                ) {
+                  updatedSubtitles[subIdx] = {
+                    ...updatedSubtitles[subIdx],
+                    ko: trans.text,
+                  };
+                  totalApplied++;
+                }
+              }
+            }
+          } catch (err) {
+            if (abortController?.signal.aborted) return;
+            console.error("[TranslationService] Pass 3 chunk failed:", err);
+          }
+        });
+
+        await runParallel(fillTasks, PARALLEL_CONCURRENCY, abortController?.signal);
+
+        store.setSubtitles([...updatedSubtitles]);
+
+        const stillMissing = updatedSubtitles.filter(
+          (s) => !s.ko || s.ko.trim() === ""
+        ).length;
+        if (stillMissing > 0) {
+          addLog(`  ⚠ 보충 후에도 ${stillMissing}개 미번역 남음`);
+        } else {
+          addLog(`  ✓ 보충 번역 완료! 미번역 0개`);
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Pass 3.5: 연속 중복 문장 제거 (Deduplication)
+    // prev_context 환각으로 인한 연속 동일 번역 감지 및 제거
+    // ═══════════════════════════════════════════════════════════════
+    if (!abortController?.signal.aborted) {
+      let dedupCount = 0;
+      for (let i = 1; i < updatedSubtitles.length; i++) {
+        const curr = updatedSubtitles[i];
+        const prev = updatedSubtitles[i - 1];
+        if (
+          curr.ko &&
+          prev.ko &&
+          curr.ko.trim() === prev.ko.trim() &&
+          curr.ko.trim().length > 5 &&
+          curr.en.trim() !== prev.en.trim()
+        ) {
+          // 원문 유사도 체크: 원문끼리도 비슷하면 합법적 반복 대사 → skip
+          const enA = prev.en.trim().toLowerCase();
+          const enB = curr.en.trim().toLowerCase();
+          const shorter = Math.min(enA.length, enB.length);
+          const longer = Math.max(enA.length, enB.length);
+          const lenRatio = shorter / (longer || 1);
+          // 원문 길이 비슷(±30%) + 시작 부분 동일 → 합법적 반복
+          if (lenRatio > 0.7 && enA.slice(0, 5) === enB.slice(0, 5)) continue;
+          // 환각 중복
+          updatedSubtitles[i] = { ...updatedSubtitles[i], ko: "" };
+          dedupCount++;
+        }
+      }
+      if (dedupCount > 0) {
+        addLog(`  🔧 [Pass 3.5] 연속 중복 ${dedupCount}개 감지 → 재번역 대상으로 표시`);
+        store.setSubtitles([...updatedSubtitles]);
+
+        // 중복 제거로 비워진 블록들 재번역
+        const dedupEmpty = updatedSubtitles
+          .map((s, idx) => ({ ...s, _idx: idx }))
+          .filter((s) => !s.ko || s.ko.trim() === "");
+
+        if (dedupEmpty.length > 0 && dedupEmpty.length <= 50) {
+          addLog(`  ⚡ [Pass 3.5] ${dedupEmpty.length}개 중복 블록 병렬 재번역 중...`);
+
+          const dedupTasks = dedupEmpty.map((s) => async () => {
+            if (abortController?.signal.aborted) return;
+            const prevCtx = updatedSubtitles
+              .slice(Math.max(0, s._idx - 3), s._idx)
+              .filter((x) => x.ko)
+              .map((x) => ({ index: x.id, original: x.en, translated: x.ko }));
+            const nextCtx = updatedSubtitles
+              .slice(s._idx + 1, Math.min(updatedSubtitles.length, s._idx + 3))
+              .filter((x) => x.ko)
+              .map((x) => ({ index: x.id, original: x.en, translated: x.ko }));
+
+            try {
+              const res = await fetchWithRetry(
+                `${API_BASE}/subtitles/batch-translate`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  signal: abortController?.signal,
+                  body: JSON.stringify({
+                    blocks: [{
+                      index: s.id, start: s.start, end: s.end,
+                      text: sanitizeSubtitleText(s.en),
+                      speaker: s.speaker, addressee: s.addressee,
+                      duration_sec: computeBlockDuration(s),
+                      max_chars: computeMaxChars(computeBlockDuration(s)),
+                    }],
+                    title: metadata?.title || "Unknown",
+                    synopsis: fullSynopsis.slice(0, 300),
+                    genre: strategyBlueprint?.content_analysis?.genre || metadata?.genre?.join(", ") || "Drama",
+                    personas: detailedPersonas,
+                    fixed_terms: fixedTerms,
+                    translation_rules: strategyBlueprint?.translation_rules?.join("\n") || "",
+                    target_lang: "ko",
+                    prev_context: [...prevCtx, ...nextCtx],
+                    character_relations: getStore().characterRelations,
+                    confirmed_speech_levels: getStore().confirmedSpeechLevels,
+                  }),
+                }
+              );
+              if (res.ok) {
+                const data = await res.json();
+                const trans = parseTranslationResponse(data);
+                if (trans.length > 0 && trans[0].text) {
+                  updatedSubtitles[s._idx] = { ...updatedSubtitles[s._idx], ko: trans[0].text };
+                }
+              }
+            } catch { /* 실패 시 원본 유지 */ }
+          });
+
+          await runParallel(dedupTasks, PARALLEL_CONCURRENCY, abortController?.signal);
+          store.setSubtitles([...updatedSubtitles]);
+          addLog(`  ✓ [Pass 3.5] 중복 재번역 완료`);
+        }
+      }
+    }
+
+    store.setProcessingProgress(90);
+    store.setCurrentBatch(0);
+    addLog(
+      `[OK] 번역 완료! ${totalApplied}/${subtitles.length}개 적용됨${failedBatches.size > 0 ? ` (${failedBatches.size}개 배치 실패)` : ""}`
+    );
+
+    // ═══════════════════════════════════════════════════════════════
+    // Pass 4: QC Post-process [90% → 100%]
+    // ═══════════════════════════════════════════════════════════════
+    if (!abortController?.signal.aborted) {
+      const translatedForQC = updatedSubtitles.filter(
+        (s) => s.ko && s.ko.trim() !== ""
+      );
+      if (translatedForQC.length > 0) {
+        addLog(
+          `> [Pass 4] LLM-as-Judge QC 시작 — ${translatedForQC.length}개 블록 교정 중...`
+        );
+
+        const qcBatchSize = 40;
+        const qcBatches = Math.ceil(
+          updatedSubtitles.length / qcBatchSize
+        );
+        let qcApplied = 0;
+
+        addLog(`  ⚡ [Pass 4] ${qcBatches}개 QC 배치 병렬 처리 중...`);
+
+        // QC 배치를 그룹 단위로 병렬 처리
+        for (let groupStart = 0; groupStart < qcBatches; groupStart += PARALLEL_CONCURRENCY) {
+          if (abortController?.signal.aborted) break;
+          const groupEnd = Math.min(groupStart + PARALLEL_CONCURRENCY, qcBatches);
+
+          const qcTasks = Array.from({ length: groupEnd - groupStart }, (_, offset) => async () => {
+            const qi = groupStart + offset;
+            if (abortController?.signal.aborted) return 0;
+
+            const qcStart = qi * qcBatchSize;
+            const qcEnd = Math.min(
+              qcStart + qcBatchSize,
+              updatedSubtitles.length
+            );
+            const qcBlocks = updatedSubtitles.slice(qcStart, qcEnd);
+
+            const hasTranslation = qcBlocks.some(
+              (s) => s.ko && s.ko.trim() !== ""
+            );
+            if (!hasTranslation) return 0;
+
+            try {
+              const qcRes = await fetchWithRetry(
+                `${API_BASE}/subtitles/qc-postprocess`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  signal: abortController?.signal,
+                  body: JSON.stringify({
+                    blocks: qcBlocks.map((s) => ({
+                      index: s.id,
+                      start: s.start,
+                      end: s.end,
+                      en: s.en,
+                      ko: s.ko || "",
+                    })),
+                    genre:
+                      strategyBlueprint?.content_analysis?.genre ||
+                      metadata?.genre?.join(", ") ||
+                      "Drama",
+                    title: metadata?.title || "Unknown",
+                    personas: detailedPersonas,
+                    translation_rules:
+                      strategyBlueprint?.translation_rules?.join(
+                        "\n"
+                      ) || "",
+                  }),
+                }
+              );
+
+              if (qcRes.ok) {
+                const qcData = await qcRes.json();
+                const corrections = parseTranslationResponse(qcData);
+                let batchFixed = 0;
+
+                for (const corr of corrections) {
+                  const subIdx = updatedSubtitles.findIndex(
+                    (s) => s.id === corr.index
+                  );
+                  if (
+                    subIdx !== -1 &&
+                    corr.text &&
+                    corr.text.trim() !== ""
+                  ) {
+                    if (corr.text === updatedSubtitles[subIdx].en)
+                      continue;
+                    if (corr.text !== updatedSubtitles[subIdx].ko) {
+                      updatedSubtitles[subIdx] = {
+                        ...updatedSubtitles[subIdx],
+                        ko: corr.text,
+                      };
+                      batchFixed++;
+                    }
+                  }
+                }
+                addLog(`    ✓ [QC ${qi + 1}/${qcBatches}] ${batchFixed > 0 ? `${batchFixed}개 교정됨` : "교정 없음 (원본 유지)"}`);
+                return batchFixed;
+              }
+            } catch (qcErr) {
+              if (abortController?.signal.aborted) return 0;
+              console.error(`[QC] Batch ${qi + 1} failed:`, qcErr);
+              addLog(
+                `  ⚠ [QC ${qi + 1}] 교정 실패 (원본 유지)`
+              );
+            }
+            return 0;
+          });
+
+          const groupResults = await runParallel(qcTasks, PARALLEL_CONCURRENCY, abortController?.signal);
+          for (const fixed of groupResults) {
+            qcApplied += (fixed || 0);
+          }
+
+          const qcProgress = Math.floor(90 + ((groupEnd) / qcBatches) * 10);
+          store.setProcessingProgress(qcProgress);
+        }
+
+        store.setSubtitles([...updatedSubtitles]);
+        addLog(
+          `  ✓ [Pass 4] QC 완료 — ${qcApplied}개 블록 교정됨`
+        );
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Pass 5.1: 하드코딩 후처리 (금기어 + 마침표 + 서식 통일)
+    // LLM 불필요, 규칙 기반 최종 정리
+    // ═══════════════════════════════════════════════════════════════
+    if (!abortController?.signal.aborted) {
+      let periodCount = 0;
+      let expressionCount = 0;
+      let formatCount = 0;
+
+      // 금기어 치환 맵
+      const prohibitedReplacements: Array<{ pattern: RegExp; replacement: string }> = [
+        { pattern: /생일\s?소년/g, replacement: "오늘의 주인공" },
+        { pattern: /생일\s?소녀/g, replacement: "오늘의 주인공" },
+        { pattern: /생일\s?아이/g, replacement: "오늘의 주인공" },
+        { pattern: /코\s?분노/g, replacement: "코뿔소 난동" },
+        { pattern: /나쁜\s?남자/g, replacement: "나쁜 놈" },
+        { pattern: /나쁜\s?소년/g, replacement: "나쁜 놈" },
+        { pattern: /좋은\s?소녀/g, replacement: "착한 아이" },
+        { pattern: /좋은\s?소년/g, replacement: "착한 아이" },
+      ];
+
+      // 존댓말 어미 (마침표 유지 대상)
+      const formalEndings = /(?:습니다|세요|하세요|주세요|까요|나요|지요|입니다|됩니다|겠습니다|십시오|하시오)$/;
+
+      for (let i = 0; i < updatedSubtitles.length; i++) {
+        const block = updatedSubtitles[i];
+        if (!block.ko || block.ko.trim() === "") continue;
+
+        let text = block.ko;
+        let changed = false;
+
+        // ── 1. 금기어 치환 ──
+        for (const rule of prohibitedReplacements) {
+          if (rule.pattern.test(text)) {
+            text = text.replace(rule.pattern, rule.replacement);
+            expressionCount++;
+            changed = true;
+          }
+        }
+
+        // ── 2. 말줄임표 통일: "..." → "…" (U+2026) ──
+        if (text.includes("...")) {
+          text = text.replace(/\.{3,}/g, "\u2026");
+          formatCount++;
+          changed = true;
+        }
+
+        // ── 3. 효과음 괄호 통일: () 로 통일 ──
+        if (text.includes("【") || text.includes("〔") || text.includes("［")) {
+          text = text.replace(/[【〔［]/g, "(").replace(/[】〕］]/g, ")");
+          formatCount++;
+          changed = true;
+        }
+
+        // ── 4. 마침표 하드코딩 제거 ──
+        // 존댓말 어미 뒤 마침표만 유지, 나머지 전부 제거
+        const lines = text.split("\n");
+        const cleanedLines = lines.map((line) => {
+          const trimmed = line.trimEnd();
+          // 말줄임표(…), 느낌표(!), 물음표(?) → 보존
+          if (trimmed.endsWith("\u2026") || trimmed.endsWith("!") || trimmed.endsWith("?")) {
+            return line;
+          }
+          // 마침표로 끝나지 않으면 패스
+          if (!trimmed.endsWith(".")) return line;
+          // 존댓말 어미 뒤 마침표 → 유지
+          const beforeDot = trimmed.slice(0, -1);
+          if (formalEndings.test(beforeDot)) return line;
+          // 그 외 모든 마침표 → 제거
+          periodCount++;
+          changed = true;
+          return line.replace(/\.$/, "");
+        });
+        text = cleanedLines.join("\n");
+
+        if (changed) {
+          updatedSubtitles[i] = { ...updatedSubtitles[i], ko: text };
+        }
+      }
+
+      const totalClean = periodCount + expressionCount + formatCount;
+      if (totalClean > 0) {
+        store.setSubtitles([...updatedSubtitles]);
+        const details = [
+          periodCount > 0 ? `마침표 ${periodCount}개` : "",
+          expressionCount > 0 ? `금기어 ${expressionCount}개` : "",
+          formatCount > 0 ? `서식 ${formatCount}개` : "",
+        ].filter(Boolean).join(", ");
+        addLog(`  \u2713 [Pass 5.1] 후처리 완료 \u2014 ${details} 정리됨`);
+      }
+    }
+
+    store.setProcessingProgress(100);
+
+    // Save to server
+    try {
+      const saveRes = await fetch(
+        `${API_BASE}/subtitles/save-translation`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            original_filename: srtFileName || "untitled.srt",
+            title: metadata?.title || "",
+            subtitles: updatedSubtitles.map((s) => ({
+              id: s.id,
+              start: s.start,
+              end: s.end,
+              en: s.en,
+              ko: s.ko || "",
+            })),
+          }),
+        }
+      );
+      if (saveRes.ok) {
+        const saveData = await saveRes.json();
+        addLog(`[OK] 서버에 저장됨: ${saveData.filename}`);
+      } else {
+        addLog("[WARN] 서버 저장 실패 (로컬 다운로드는 가능)");
+      }
+    } catch (saveErr) {
+      console.error("Server save failed:", saveErr);
+      addLog("[WARN] 서버 저장 실패 (로컬 다운로드는 가능)");
+    }
+
+    // Completion notification
+    store.setShowTranslationComplete(true);
+    setTimeout(() => {
+      useTranslateStore
+        .getState()
+        .setShowTranslationComplete(false);
+    }, 7000);
+
+    store.setAutoExportPending(true);
+  } catch (err) {
+    if (abortController?.signal.aborted) {
+      addLog("[INFO] 번역이 취소되었습니다.");
+    } else {
+      console.error("Batch translation failed:", err);
+      addLog(`[ERROR] Translation failed: ${err}`);
+    }
+  } finally {
+    store.setLoading(false);
+    store.setCurrentBatch(0);
+    store.setTranslationRunning(false);
+    abortController = null;
+  }
+}
+
+// ====== Cancel translation ======
+export function cancelTranslation(): void {
+  if (abortController) {
+    abortController.abort();
+    addLog("[INFO] 번역 취소 요청됨...");
+  }
+}
+
+// ====== Check if running ======
+export function isTranslationRunning(): boolean {
+  return getStore().translationRunning;
+}

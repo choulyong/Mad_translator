@@ -1,0 +1,64 @@
+{
+  "version": "1.0",
+  "description": "Context Window Configuration for Pass 1 Translation",
+  "lastUpdated": "2026-02-22",
+
+  "context_window": {
+    "enabled": true,
+    "max_previous_context": 5,
+    "max_next_context": 3,
+    "context_unit": "block",
+    "include_speaker_info": true,
+    "include_duration_info": false
+  },
+
+  "context_formatting": {
+    "template": "이전 문맥: {prev_text}\n\n현재 번역: {current_text}\n\n다음 문맥: {next_text}",
+    "include_translation_continuity": true,
+    "include_dialogue_flow": true
+  },
+
+  "context_types": {
+    "narrative_continuity": {
+      "description": "스토리 흐름 유지",
+      "weight": 0.3,
+      "examples": [
+        "첫 장면에서 'Judy는 경찰 학원에 입학' → 다음 장면 '교육 받는 중'",
+        "Nick가 '사기꾼'으로 소개 → 나중에 '도움이 됨'으로 진화"
+      ]
+    },
+
+    "character_consistency": {
+      "description": "캐릭터 일관성 유지",
+      "weight": 0.4,
+      "examples": [
+        "Judy는 항상 존댓말 사용",
+        "Nick은 항상 반말 사용"
+      ]
+    },
+
+    "emotional_continuity": {
+      "description": "감정선 유지",
+      "weight": 0.3,
+      "examples": [
+        "행복한 장면 → 같은 톤 유지",
+        "비극적 장면 → 슬픈 톤 유지"
+      ]
+    }
+  },
+
+  "context_optimization": {
+    "strategy": "semantic_similarity",
+    "truncation_method": "middle_truncation",
+    "token_budget": 1024,
+    "context_relevance_threshold": 0.6
+  },
+
+  "semantic_batching_window": {
+    "enabled": true,
+    "batch_similarity_threshold": 0.7,
+    "batch_size_range": [15, 50],
+    "consider_speaker_continuity": true,
+    "consider_scene_boundary": true
+  }
+}

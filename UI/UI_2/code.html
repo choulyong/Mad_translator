@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html class="dark" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>영화 리네이머 라이브러리 (국문)</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#17cf5a",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "surface-dark": "#1a2e22", // Derived surface color
+                        "surface-lighter": "#243c2f", // Slightly lighter surface
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #112117; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #243c2f; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #17cf5a; 
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-gray-900 dark:text-gray-100 font-display h-screen flex overflow-hidden">
+<aside class="w-20 flex-shrink-0 flex flex-col items-center py-6 border-r border-gray-200 dark:border-white/10 bg-white dark:bg-surface-dark z-20">
+<div class="mb-10 w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-emerald-700 flex items-center justify-center shadow-lg shadow-primary/20">
+<span class="material-icons text-white text-xl">movie_filter</span>
+</div>
+<nav class="flex-1 flex flex-col gap-6 w-full px-4">
+<button class="w-12 h-12 rounded-xl flex items-center justify-center text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors group relative">
+<span class="material-icons">home</span>
+<span class="absolute left-14 bg-surface-lighter text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/10 shadow-xl">홈</span>
+</button>
+<button class="w-12 h-12 rounded-xl flex items-center justify-center bg-primary text-white shadow-lg shadow-primary/30 relative group">
+<span class="material-icons">grid_view</span>
+<span class="absolute left-14 bg-surface-lighter text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/10 shadow-xl">대시보드</span>
+</button>
+<button class="w-12 h-12 rounded-xl flex items-center justify-center text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors group relative">
+<span class="material-icons">history</span>
+<span class="absolute left-14 bg-surface-lighter text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/10 shadow-xl">기록</span>
+</button>
+<button class="w-12 h-12 rounded-xl flex items-center justify-center text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors group relative">
+<span class="material-icons">folder</span>
+<span class="absolute left-14 bg-surface-lighter text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/10 shadow-xl">폴더</span>
+</button>
+</nav>
+<div class="flex flex-col gap-4 w-full px-4">
+<button class="w-12 h-12 rounded-xl flex items-center justify-center text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors group relative">
+<span class="material-icons">settings</span>
+<span class="absolute left-14 bg-surface-lighter text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/10 shadow-xl">설정</span>
+</button>
+<div class="w-10 h-10 rounded-full bg-gradient-to-tr from-gray-700 to-gray-500 border-2 border-primary/50 overflow-hidden">
+<img alt="User Avatar" class="w-full h-full object-cover" data-alt="User avatar placeholder" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBgGo5MUJbAoTwpHfiN-M8-UYufQKlf5DoKaBIULywrTa2o9bd5Es7B1YOW2WjacVD0vekmCsvpqZFntNRyXF1vcL4fVAoQiCkUXfaQvmU8CkNhWs5Ia-hzM2FstFN0Y9rwl6E7tddBSTAkNhL3vxgsPOOVqnRxcr5qbS7Aopz2RGVU7ii3E_NcIyIf5jLHiNKDOloPXM1JcyigDoQ0qbZf7GHDjOUYKObBv62rbdLh4H9C7M_EhqlT5GaV6DWMf47p4LfCP7tOtr0"/>
+</div>
+</div>
+</aside>
+<main class="flex-1 flex flex-col min-w-0 bg-background-light dark:bg-background-dark relative">
+<div class="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
+<header class="flex-shrink-0 px-8 py-6 flex items-center justify-between z-10">
+<div class="flex items-center gap-4">
+<h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">라이브러리</h1>
+<span class="px-3 py-1 rounded-full text-xs font-semibold bg-primary/20 text-primary border border-primary/20">
+                24개의 영화
+            </span>
+</div>
+<div class="flex items-center gap-3">
+<div class="relative">
+<span class="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg">search</span>
+<input class="pl-10 pr-4 py-2 rounded-lg bg-white dark:bg-surface-dark border border-gray-200 dark:border-white/10 text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none w-64 text-gray-900 dark:text-white placeholder-gray-500" placeholder="라이브러리 검색..." type="text"/>
+</div>
+<button class="p-2 rounded-lg bg-white dark:bg-surface-dark border border-gray-200 dark:border-white/10 text-gray-400 hover:text-white hover:border-primary transition-colors">
+<span class="material-icons">filter_list</span>
+</button>
+<button class="p-2 rounded-lg bg-white dark:bg-surface-dark border border-gray-200 dark:border-white/10 text-gray-400 hover:text-white hover:border-primary transition-colors">
+<span class="material-icons">sort</span>
+</button>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto px-8 pb-8 z-10">
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative border-2 border-primary shadow-[0_0_20px_rgba(23,207,90,0.3)] transition-all duration-300">
+<img alt="Inception Movie Poster" class="w-full h-full object-cover transform scale-105 transition-transform duration-500 ease-out" data-alt="Abstract dark cinematic movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBVgAwL9qNuerdzXH5HLOU0S2upljD_K03Jz8MHhXkUwleShsCYH2gkAd5JWBLifAREV5aXZe1bkKfw6cqLrdsj6AuS5LByx-w2Uqyr3rdmIK4br6JmPcEsxHpgb9WoGbxPbvm3WA87C4siKJLDX_ETJ9Hnec3e5XVAusXTUKTiOJLvn36xBRiG4k7TsLksZ0qnWb6K6NCoFS3HL2-jLbCzN5-93c00B5idPeKeYZB-JyusFIRARlWGk-YrLqCEXgYMXxLwBms8zx4"/>
+<div class="absolute inset-0 bg-black/40 opacity-100 flex items-center justify-center gap-2 backdrop-blur-[2px]">
+<button class="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center hover:bg-emerald-400 transition-colors shadow-lg transform hover:scale-110">
+<span class="material-icons text-xl">play_arrow</span>
+</button>
+<button class="w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors backdrop-blur-md transform hover:scale-110">
+<span class="material-icons text-xl">edit</span>
+</button>
+</div>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-white truncate leading-tight group-hover:text-primary transition-colors">인셉션</h3>
+<p class="text-xs text-gray-400 mt-1 font-medium">2010</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="Parasite Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Moody dark suspense movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD6J41EgrJoZzc-gpPQD-joaZcSNy4rhgkGPoB1vePwvHp8_qcJ_wn4oNgFOGQHhoU8hGwrNQrJfq1mZSrUgBh4r7nWl9z-k04KWruGJLDnbqloqxjnK3PdWl9buFlZgklvgIElMITwNnFOgfrGgxL1LG0AkPUq7363UfEKzHKxuIhYGWptHurQNEqrpzcYq5715zKNEoqEc52i85nVx8CcPqsjBUTQe4f0Ryhxpl7hLq2KA2-DPYFggUtSeMEFR6tHIhQT8N3WxbY"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">기생충</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2019</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="Oldboy Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Intense stylized action movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8SyCtJhvnvYkNUP4OV0FYV6QqMcD2R7nXe3yj7WQ52Jva5u0tulPqx7lZzGmHJFgwb8uE_ookFx_g6TN0BrAFQxesVN1Qr2zu7E6lnJHFjWcYDjdxNxIQgme68q3hUVhXSitCGCDckVs8tDZ0RwyD5Up3utfa-lBT0PIiz6-5-b-2iJeSieMFCdDLMYpaL4-X6zsL3Nf8AR8yYEPODxlzkcHZMqcKHwWvoo_z6Cec-Q9_i3wit77r5pjmCLA4gEDM8vaf5jDFH3A"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">올드보이</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2003</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="Interstellar Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Space sci-fi movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxier7V8PzZnlT5Lvm95oS7QwKRvrO21UHI0mezfMJ7f9T2HJRAYN2briX2SchorpV7xBGJoaYpFRfqvjnyfLr86RE4zFr0aAPiZGIGyJz87jXkWSYd2ahHbXK3FNm30vGTyS-wJZi90mk0aKSEo_TDB8tBwGXRY62QhwC0Q58164CJNKylpYq-NY8zluEG82nSxOFamWjmS8v13FxILIFGm8hFkIazxPJ1SqHhXRcZERG_o3cs-Wt02e-fXRS1INrFeHk0CkqnJg"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">인터스텔라</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2014</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="The Handmaiden Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Artistic period drama movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8GVAAZtCU4s8003esIEiZqgK0eWEYEdLaqpBn0GZSA515HcQZeEdnQlnb7qYM7Vj5MDmjL5wWfW_q0UtX6z6a5qTgnraoIV_B65j0RCbw80AcZ4oWzCC4TOhnr3LyypC18AjwuRBHO6jUvDyqXps2-jNXwyIhocauT-E91sznxSc8ewhptXZgqZvrzy0sMUzXxBqNWzOEt6IxbHMzf7dUbFJ6FKvkP_9dnw2PJt7oK2M-ucY1H_6rkWxHd2ABlSwOdq8Ob964ykw"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">아가씨</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2016</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="Memories of Murder Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100 grayscale-[30%] hover:grayscale-0" data-alt="Gritty crime thriller movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCMIqCz30MQlHQCdMeZ8hp914Gwi1IeueAN47CjAf2KYPKQV1O9GsewlPnm3xtAfJFCTh-iVZD_2jaxPCCK8FGdRSOqooFcnfSg969QUg1fe3Ab2SILRBABRehk8_ojvOPCI2_lrzgnLhXo9E-btOWzwwru7186C5DhPKFJ3ncW77LVWRHZ000Y5N6_cG15H0MH-D0UbtrTlIdutMz8zBEONbvUY3qWjskAF0XXTeamVpjctI94xft7AsmwomWtyHKvojTfr8nWYYo"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">살인의 추억</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2003</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="Train to Busan Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Action horror movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAwlSs5XtgjaicFfLQlTe8o2PshobDerYieLCTWJrkfG8pS8fWqzdhhyOlNxMGc3SSU4JATX86gJ0AglY3RrQ-hje7c3EX-5hgRqPBk3JkdxmMQ4Acl-LF7AyALJcVqI3UeSOH3UCw8oah_MR--T1kSPVqkqolPnqQoWzjcGOpc-xsvmAx3b5qAek8NIdSl8cDamy1YiAdK_7oRI0RNSya2rZRSMAZokgauOKZjkiEklTLg4B9t7H2xd1LNJFiMrKWtbxMgss1FGNY"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">부산행</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2016</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="The Wailing Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Dark mysterious horror movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDbuaaEbdy57mdviHaM2REb4LWC3UzZXbNTlVRta1RY2ReBQ_f4tXMZNzt6yGrAZs5bIjoOJKv3xnEx81XO5FlQGGr-oz6g8OloLlXdNZHk-Llnsi4Bvvrp3tWTvNwUeDZchTU-eXm1tTTItcHRFeb_7ylCnmgdKfUc9-Ts2k5xWE75B0L0XiSK8KJHrIJBxeT7pbX_co25lU45uyaiVGktgITn15xBu5c6jwJvcZ47F2zs0hIF3manNZjhm0XivMID9nhWGKO2fkI"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">곡성</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2016</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="Decision to Leave Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Abstract romance thriller movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuACplJewe54WdnwHihq5U2ssyygBNBrppFsHXWEBvXP7-iYgHPBzCX1Q05ESKNMcuyKQZ-e8RHiNkISPOZAzqr9OVhAQU_gqe5-_NbtwlQPVWgGeyrf65FaOll_-yMRXsjggxmgvb4U7ahyd6TK1nnEP7ymktd5flxtmB1idsEpK9xG5UqYdox3CsSu_gd-3X994SYCIKbt5NlhOKhP8ezcS8Kw1WZTMBS3WDOqCA3POtlz1jEuLF2fTdj82BLTOPxzpIG_gkTtj0g"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">헤어질 결심</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2022</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<div class="absolute inset-0 flex items-center justify-center bg-surface-lighter text-gray-600">
+<span class="material-icons text-4xl opacity-50">image_not_supported</span>
+</div>
+<img alt="Burning Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Minimalist drama movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBqYzaSMRU4PU-ZDRaWZPmpH9mM9WewM8x82B5sIlfesRpWVDA0zeXNrr23cHVqgi-0kpEijazUPLbdwJjO8nOM2GNW0mwp1PT0fscl9Z8LfH7mKe7Wj854lcmtLp_WKxBhKYJiHnGvrrlX2Cbrzfz8TjFwdjB0FnutdbD0XhGFX-RBr2yR0To2NgUJR9fKHcsEWOMncjA7BKqg1a6H8OZ5hdANE7W9dIrouVioIHSV8M5hm-UyTpF4TsJZ76Itj7dRc25eMJEGdrM"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">버닝</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2018</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="I Saw the Devil Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Dark action thriller movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBF5wJBRpemF4TuktGnkV6dVgjbQ3a5D7Pumv5B7EEbgEHZFJ6bgVCeRx7_THlGxjV3inhB1WjDBrr54DOu2WzafjQBic1GYJ8Zu-W8-opfSzbG60vwUSwg7dX8VCBPuoI_xoHo9BsqCip8Vz0e2KkXFdWnNcmCv-tOuVsFpJdZu19kyaysPZfqcurnOI4Jw1XyYtr1MCxWcZJaimw3CWWz3bbpyAuRzZZOQqwt5h32K4YGXV2_EoBFLRDSY8Y1XLdYlZg7cl7D7Fs"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">악마를 보았다</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2010</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="The Chaser Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Gritty urban chase movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAQI3RSeilOK4Cl5Ikxft_yfuVh8I77qaX7cq48Y2BsLauNHiVf_iemUhipOShQy7ZNUdtlkS1qKvrBA19OsoE2cQt_lKsZ_Woy99QLjXS7oAHe9irU9KMCov3UlGKTiql9yvKB5BdGAFskm2pT5RLOCwpAHm63IFZXcFvVR9kRSA1fcMXO_Spk_A-HsmzhsJPiyisu4g_U8p_2UwHkKQ177mVgEdUq3XJDELGg6LIfu524AokZGFxkSeMbwFBqKSc9vpFe8IiUoRk"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">추격자</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2008</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="Mother Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Moody atmospheric drama poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAyprTwv0Cc1tm35iSsK9Iv3Z6SZKQTaxiOzkXcwY67LGCqbrdC09QMj0hNTQzYlW9fl5nCSjBmujBSYaiMRH9mBpmKgfbTTuEXiSp9SWCyGN-Tf-liM7AF6GXsJtaXU_IAC_feUTQUKhYmPeCUVsHPHzdx2R7vPSw8WMeK5CQliEPagvz05mTdx-bOGXB70m17xxM1dbH1e4EmtyNLQXpVa78gWDhrukhzLE0RxTTbMLgKtTA2EKdTp81kbu9JP_0s8ofY6XP-7tk"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">마더</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2009</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="Thirst Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Stylized horror romance movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD49qilZEK77yPsCoVZDaQO8r4FcnTZKtx10rkWUE3woUeaR2yNs9jlmpvLuTFWOUx43Zf9MwcypjnoeijEA7lobu8YD-wSzdPN55dmUA4nZCNB8Kc9Y5xRlWP3jfX9uX8l3Au8L_1qqH0NAqItjv1jsL_i6R8mGK0ItWkCTW1O_9Z93mps14f0hAHS3WzIpeEje-3zPYDAvZMbgTVRFx68CgR6uDPrn87wLUnt9Oka0U5bkRIygLt7VNhEQFTg53LqrHjbhxwk1J4"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">박쥐</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2009</p>
+</div>
+</div>
+<div class="group relative flex flex-col gap-3 cursor-pointer">
+<div class="aspect-[2/3] w-full rounded-xl overflow-hidden relative bg-surface-dark border border-white/5 group-hover:border-primary/50 transition-all duration-300">
+<img alt="A Taxi Driver Movie Poster" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" data-alt="Historical drama taxi movie poster" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA4vhHHscRr-Ro_ZgupaAW8cY2SFNOmPm0uGrhbrMyV255npM_zUS4d14DioGLn8349df_-TAxIhc5Ciub11eYeArgcvh_nE7i3KdQgeb8jhM9nJ4HcID66Gm6SwZCITwtw95A2mObFuduil8zo8M2NmdjB6bVRtcOWrM6WXIo7cmykxomO0hHzqE1RfhGm1SE_jdqRwJMTN0_3CN2hEtqMSJadUgnjXved2aUc5ps6t2RwJNPe3ZSeJGsnkL72vl6aH9FEcohyU8k"/>
+</div>
+<div class="px-1">
+<h3 class="font-semibold text-gray-200 truncate leading-tight group-hover:text-white transition-colors">택시운전사</h3>
+<p class="text-xs text-gray-500 group-hover:text-gray-400 mt-1 font-medium">2017</p>
+</div>
+</div>
+</div>
+<div class="mt-12 flex justify-center pb-8">
+<button class="px-6 py-3 rounded-full bg-surface-dark border border-white/10 text-sm font-medium text-gray-300 hover:text-white hover:border-primary/50 transition-colors flex items-center gap-2">
+                더 보기
+                <span class="material-icons text-sm">expand_more</span>
+</button>
+</div>
+</div>
+</main>
+
+</body></html>

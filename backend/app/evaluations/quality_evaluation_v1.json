@@ -1,0 +1,144 @@
+{
+  "version": "1.0",
+  "evaluation_date": "2026-02-22T18:45:38.701412",
+  "total_samples": 10,
+  "model_type": "fine-tuned",
+  "aggregate_metrics": {
+    "avg_fluency": 0.81,
+    "avg_accuracy": 0.88,
+    "avg_tone_consistency": 0.68,
+    "avg_overall": 0.805
+  },
+  "character_analysis": {
+    "Judy Hopps": 0.797,
+    "Officer": 0.815,
+    "Chief Bogo": 0.812,
+    "Nick Wilde": 0.814
+  },
+  "sample_evaluations": [
+    {
+      "fluency": 0.9,
+      "accuracy": 0.8,
+      "tone_consistency": 0.95,
+      "overall": 0.873,
+      "model_type": "fine-tuned",
+      "id": "s1_001",
+      "english": "I'm Judy Hopps, and I'm here to make the world a better place.",
+      "korean": "저는 주디 홉스입니다. 이 세상을 더 좋은 곳으로 만들겠습니다.",
+      "character": "Judy Hopps",
+      "tone": "formal_polite, earnest"
+    },
+    {
+      "fluency": 0.8,
+      "accuracy": 0.9,
+      "tone_consistency": 0.7,
+      "overall": 0.815,
+      "model_type": "fine-tuned",
+      "id": "s1_002",
+      "english": "Is she serious?",
+      "korean": "정말 진심인 거야?",
+      "character": "Officer",
+      "tone": "skeptical"
+    },
+    {
+      "fluency": 0.9,
+      "accuracy": 0.9,
+      "tone_consistency": 0.55,
+      "overall": 0.812,
+      "model_type": "fine-tuned",
+      "id": "s2_001",
+      "english": "Officer Hopps, you're on parking duty.",
+      "korean": "홉스 경관, 주차 위반 단속이 너의 임무야.",
+      "character": "Chief Bogo",
+      "tone": "formal_authoritative"
+    },
+    {
+      "fluency": 0.9,
+      "accuracy": 0.9,
+      "tone_consistency": 0.55,
+      "overall": 0.812,
+      "model_type": "fine-tuned",
+      "id": "s2_002",
+      "english": "But sir, I could really help with—",
+      "korean": "하지만 사장님, 저는 정말 도움이 될 수 있어요—",
+      "character": "Judy Hopps",
+      "tone": "formal_polite, hopeful"
+    },
+    {
+      "fluency": 0.9,
+      "accuracy": 0.9,
+      "tone_consistency": 0.7,
+      "overall": 0.85,
+      "model_type": "fine-tuned",
+      "id": "s3_001",
+      "english": "You're not so bad, Hopps.",
+      "korean": "넌 생각보다 괜찮은데, 홉스.",
+      "character": "Nick Wilde",
+      "tone": "informal_casual, witty"
+    },
+    {
+      "fluency": 0.8,
+      "accuracy": 0.9,
+      "tone_consistency": 0.55,
+      "overall": 0.777,
+      "model_type": "fine-tuned",
+      "id": "s3_002",
+      "english": "That's the con.",
+      "korean": "그게 내 수법이야.",
+      "character": "Nick Wilde",
+      "tone": "informal_casual, clever"
+    },
+    {
+      "fluency": 0.6,
+      "accuracy": 0.9,
+      "tone_consistency": 0.7,
+      "overall": 0.745,
+      "model_type": "fine-tuned",
+      "id": "s4_001",
+      "english": "Stop! Police!",
+      "korean": "멈춰! 경찰이다!",
+      "character": "Judy Hopps",
+      "tone": "urgent, commanding"
+    },
+    {
+      "fluency": 0.9,
+      "accuracy": 0.9,
+      "tone_consistency": 0.7,
+      "overall": 0.85,
+      "model_type": "fine-tuned",
+      "id": "s4_002",
+      "english": "I can't believe this is happening!",
+      "korean": "이게 말이 돼? 정말 이래?",
+      "character": "Judy Hopps",
+      "tone": "shocked, indignant"
+    },
+    {
+      "fluency": 0.6,
+      "accuracy": 0.8,
+      "tone_consistency": 0.7,
+      "overall": 0.705,
+      "model_type": "fine-tuned",
+      "id": "s5_001",
+      "english": "I was wrong about you.",
+      "korean": "널 잘못 봤어.",
+      "character": "Judy Hopps",
+      "tone": "sincere, regretful"
+    },
+    {
+      "fluency": 0.8,
+      "accuracy": 0.9,
+      "tone_consistency": 0.7,
+      "overall": 0.815,
+      "model_type": "fine-tuned",
+      "id": "s5_002",
+      "english": "We're partners now.",
+      "korean": "우리 이제 파트너지.",
+      "character": "Nick Wilde",
+      "tone": "sincere, warm"
+    }
+  ],
+  "quality_assessment": "GOOD - Fine-tuned model demonstrates solid improvements",
+  "recommendations": [
+    "Enhance tone marker detection and application in training data"
+  ]
+}

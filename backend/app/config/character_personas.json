@@ -1,0 +1,142 @@
+{
+  "version": "1.0",
+  "description": "Zootopia 2 Character Persona Mapping",
+  "lastUpdated": "2026-02-22",
+
+  "personas": {
+    "Judy Hopps": {
+      "id": 1,
+      "species": "rabbit",
+      "role": "police officer",
+      "personality": "ambitious, optimistic, earnest",
+      "tone_markers": {
+        "primary": "formal_polite",
+        "honorific_level": "존댓말",
+        "expression_particles": ["요", "~해요", "~는데요", "~거든요"]
+      },
+      "typical_expressions": [
+        "제발",
+        "미안해요",
+        "다행이네요",
+        "정말 그런 거 아니에요",
+        "약속드립니다"
+      ],
+      "speech_characteristics": {
+        "mistakes_in_korean": "과도한 경어, 딱딱한 표현",
+        "correction": "자연스러운 존댓말로 표현"
+      },
+      "example_dialogue": [
+        {
+          "english": "I'm gonna crack this case!",
+          "korean": "이 사건을 꼭 풀어내고 말 거예요!"
+        },
+        {
+          "english": "I'm sorry I lied.",
+          "korean": "제가 거짓말했어요. 정말 죄송해요."
+        }
+      ]
+    },
+
+    "Nick Wilde": {
+      "id": 2,
+      "species": "fox",
+      "role": "con artist → police officer",
+      "personality": "cunning, witty, street-smart, loyal",
+      "tone_markers": {
+        "primary": "informal_casual",
+        "honorific_level": "반말",
+        "expression_particles": ["~야", "~지", "~어", "~네"]
+      },
+      "typical_expressions": [
+        "맞지?",
+        "고마워, 수다쟁이 씨",
+        "다시 가자",
+        "웃긴데",
+        "말도 안 돼"
+      ],
+      "speech_characteristics": {
+        "personality_trait": "능글맞고 재치 있는 톤",
+        "level": "편한 반말이지만 지적임"
+      },
+      "example_dialogue": [
+        {
+          "english": "You're not so bad, Hopps.",
+          "korean": "너, 나쁘지 않네."
+        },
+        {
+          "english": "That's the con.",
+          "korean": "그게 내 수법이야."
+        }
+      ]
+    },
+
+    "Mayor Bellwether": {
+      "id": 3,
+      "species": "sheep",
+      "role": "mayor / antagonist",
+      "personality": "manipulative, passive-aggressive, two-faced",
+      "tone_markers": {
+        "primary": "formal_official",
+        "honorific_level": "존댓말",
+        "expression_particles": ["~할 거예요", "~만", "~겠습니다", "~할 수 있어요"]
+      },
+      "typical_expressions": [
+        "너희도 엮을 수 있어",
+        "입 닥쳐",
+        "내 말이 맞죠?",
+        "이건 필요한 거야"
+      ],
+      "speech_characteristics": {
+        "surface": "따뜻하고 포용적 (거짓)",
+        "underlying": "위협적이고 강압적"
+      },
+      "example_dialogue": [
+        {
+          "english": "Everyone's gonna believe me.",
+          "korean": "모두가 날 믿을 거야."
+        },
+        {
+          "english": "Quiet, everyone!",
+          "korean": "다들 조용히 해요!"
+        }
+      ]
+    },
+
+    "Chief Bogo": {
+      "id": 4,
+      "species": "buffalo",
+      "role": "police chief",
+      "personality": "stern, professional, by-the-book",
+      "tone_markers": {
+        "primary": "formal_authoritative",
+        "honorific_level": "존댓말",
+        "expression_particles": ["~하세요", "~합시다", "~겠습니다", "~되겠습니다"]
+      },
+      "typical_expressions": [
+        "좋겠습니다",
+        "명령입니다",
+        "이해하셨습니까?",
+        "직위 해제합니다"
+      ],
+      "example_dialogue": [
+        {
+          "english": "You're on night howler duty.",
+          "korean": "그럼 야간 순찰 임무를 받으시죠."
+        }
+      ]
+    }
+  },
+
+  "persona_rules": {
+    "apply_persona_to_dialogue": true,
+    "persona_detection_method": "speaker_id_from_pass_0",
+    "prompt_template": "이 문장은 {speaker}의 대사입니다. {speaker}는 다음과 같은 특징이 있습니다: {traits}. 따라서 다음과 같은 톤으로 표현하세요: {tone_hint}",
+    "enforcement_level": "soft"  // gentle correction, not strict
+  },
+
+  "integration_points": {
+    "pass_where_applied": "Pass 1 - Semantic Batch Translation",
+    "metadata_field": "character_persona",
+    "prompt_injection": true
+  }
+}

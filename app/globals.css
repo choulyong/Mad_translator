@@ -1,0 +1,225 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #17cf5a;
+  --color-primary-dark: #12a648;
+  --color-background-dark: #09090b;
+  --color-surface-dark: #18181b;
+  --color-surface-darker: #121215;
+  --color-border-dark: #27272a;
+
+  --font-display: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #18181b;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Selection */
+::selection {
+  background: rgba(23, 207, 90, 0.3);
+  color: #17cf5a;
+}
+
+/* Animate spin for loading */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Safe area insets for PWA standalone mode (notch devices) */
+@supports (padding: env(safe-area-inset-top)) {
+  @media (display-mode: standalone) {
+    body {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
+  }
+}
+
+/* ====== Fullscreen subtitle support ====== */
+:fullscreen,
+:-webkit-full-screen,
+:-moz-full-screen,
+:-ms-fullscreen {
+  background: black !important;
+  position: relative !important;
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
+:fullscreen video,
+:-webkit-full-screen video,
+:-moz-full-screen video,
+:-ms-fullscreen video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+:fullscreen .subtitle-overlay,
+:-webkit-full-screen .subtitle-overlay,
+:-moz-full-screen .subtitle-overlay,
+:-ms-fullscreen .subtitle-overlay {
+  position: absolute !important;
+  bottom: 8% !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  pointer-events: none !important;
+}
+
+:fullscreen .subtitle-overlay h2,
+:fullscreen .subtitle-overlay p,
+:-webkit-full-screen .subtitle-overlay h2,
+:-webkit-full-screen .subtitle-overlay p {
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.9), -1px -1px 2px rgba(0,0,0,0.9) !important;
+}
+
+:fullscreen .video-controls,
+:-webkit-full-screen .video-controls,
+:-moz-full-screen .video-controls,
+:-ms-fullscreen .video-controls {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+  display: block !important;
+  visibility: visible !important;
+}
+
+:fullscreen .video-controls.controls-visible,
+:-webkit-full-screen .video-controls.controls-visible {
+  opacity: 1 !important;
+}
+
+:fullscreen .video-controls.controls-hidden,
+:-webkit-full-screen .video-controls.controls-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+:fullscreen,
+:-webkit-full-screen {
+  cursor: default;
+}
+
+:fullscreen.cursor-hidden,
+:-webkit-full-screen.cursor-hidden {
+  cursor: none !important;
+}
+
+/* Subtitle custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #111418;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #283039;
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #137fec;
+}
+.shadow-neon {
+  box-shadow: 0 0 10px rgba(19, 127, 236, 0.4), 0 0 20px rgba(19, 127, 236, 0.2);
+}
+
+/* Subtitle mobile touch optimization */
+@media (max-width: 768px) {
+  .subtitle-table {
+    font-size: 14px;
+  }
+  .subtitle-table td {
+    padding: 8px 4px;
+  }
+  .video-controls button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .video-controls input[type="range"] {
+    height: 24px;
+  }
+  .subtitle-overlay p {
+    font-size: 1rem !important;
+  }
+  .subtitle-overlay h2 {
+    font-size: 1.5rem !important;
+  }
+  .log-panel {
+    display: none;
+  }
+}
+
+@media (max-width: 375px) {
+  .subtitle-overlay p {
+    font-size: 0.875rem !important;
+  }
+  .subtitle-overlay h2 {
+    font-size: 1.25rem !important;
+  }
+}
+
+@media (hover: none) {
+  .group-hover\/player\:opacity-100 {
+    opacity: 1 !important;
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .video-controls {
+    padding: 8px !important;
+  }
+  .subtitle-overlay {
+    bottom: 5% !important;
+  }
+}
+
+/* Mobile optimizations */
+@media (max-width: 767px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  /* Prevent text size adjustment on orientation change */
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Better touch scrolling */
+  .overflow-x-auto,
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}

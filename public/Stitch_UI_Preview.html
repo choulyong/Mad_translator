@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Antigravity Aura V3 Director Console</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Orbitron:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#000dff",
+                        "neon-cyan": "#00f3ff",
+                        "background-light": "#f5f5f8",
+                        "background-dark": "#0a0a0f",
+                        "charcoal": "#12121a",
+                        "titanium": "#2a2a35",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "tech": ["Orbitron", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .glassmorphism {
+            background: rgba(20, 20, 35, 0.6);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .brushed-metal {
+            background-image: linear-gradient(45deg, rgba(255,255,255,0.05) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.05) 75%, transparent 75%, transparent);
+            background-size: 4px 4px;
+        }
+        .neon-glow {
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.4);
+        }
+        .knob-radial {
+            background: radial-gradient(circle at 30% 30%, #4a4a5a, #1a1a25);
+            box-shadow: inset -2px -2px 5px rgba(255,255,255,0.1), 4px 4px 10px rgba(0,0,0,0.5);
+        }
+        .timeline-segment {
+            background: linear-gradient(180deg, rgba(0, 243, 255, 0.1) 0%, rgba(0, 13, 255, 0.1) 100%);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 selection:bg-primary/30 overflow-hidden">
+<!-- Main Container -->
+<div class="relative flex h-screen w-full flex-col bg-background-dark max-w-md mx-auto border-x border-slate-800 shadow-2xl overflow-hidden">
+<!-- Header: Top-Secret Intelligence Style -->
+<header class="flex items-center justify-between px-6 pt-8 pb-4 bg-charcoal/80 border-b border-white/5 relative z-10">
+<div class="flex flex-col">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-neon-cyan text-sm">settings_input_component</span>
+<h1 class="font-tech text-xs tracking-[0.2em] text-neon-cyan">ANTIGRAVITY AURA V3</h1>
+</div>
+<p class="font-tech text-[10px] text-slate-500 mt-1 uppercase tracking-widest">Director Console // Build 9.4.2</p>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-tech text-[10px] text-emerald-400">ENGINE: OPTIMAL</span>
+<span class="font-tech text-[10px] text-slate-500">LATENCY: 12ms</span>
+</div>
+</header>
+<!-- Main Workspace -->
+<main class="flex-1 flex flex-col gap-4 p-4 overflow-y-auto pb-32">
+<!-- Center Stage: Subtitle Timeline View -->
+<section class="glassmorphism rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden">
+<div class="flex justify-between items-center mb-1">
+<h2 class="font-tech text-[11px] text-white/70 uppercase">Subtitle Timeline</h2>
+<span class="font-tech text-[10px] text-primary">00:14:22:08</span>
+</div>
+<!-- Timeline Visualization -->
+<div class="h-24 w-full bg-black/40 rounded-lg relative overflow-hidden border border-white/5 flex flex-col justify-center gap-2 px-2">
+<div class="absolute left-1/2 top-0 bottom-0 w-[2px] bg-neon-cyan/60 z-10 shadow-[0_0_8px_#00f3ff]"></div>
+<!-- Source Stream -->
+<div class="flex gap-1">
+<div class="h-6 w-16 timeline-segment rounded flex items-center justify-center"><span class="text-[8px] font-tech text-white/50">ENG-01</span></div>
+<div class="h-6 w-32 timeline-segment rounded-sm bg-primary/20 flex items-center px-2"><span class="text-[9px] text-white truncate">"I don't think you understand..."</span></div>
+<div class="h-6 w-20 timeline-segment rounded-sm opacity-40"></div>
+</div>
+<!-- Target Stream -->
+<div class="flex gap-1 ml-4">
+<div class="h-6 w-24 timeline-segment rounded flex items-center justify-center border-neon-cyan bg-neon-cyan/10"><span class="text-[8px] font-tech text-neon-cyan">JPN-AUTO</span></div>
+<div class="h-6 w-28 timeline-segment rounded-sm border-primary/40 bg-primary/30 flex items-center px-2"><span class="text-[9px] text-white truncate">「君には理解できないと思うが…」</span></div>
+</div>
+</div>
+<!-- Parallel AI Processing Bars -->
+<div class="flex flex-col gap-2 mt-2">
+<div class="flex justify-between text-[8px] font-tech text-slate-400">
+<span>CONTEXT_ENGINE_A</span>
+<span>94%</span>
+</div>
+<div class="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[94%] shadow-[0_0_10px_#000dff]"></div>
+</div>
+<div class="flex justify-between text-[8px] font-tech text-slate-400">
+<span>SEMANTIC_DRIFT_B</span>
+<span>12%</span>
+</div>
+<div class="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+<div class="h-full bg-neon-cyan w-[12%] shadow-[0_0_10px_#00f3ff]"></div>
+</div>
+</div>
+</section>
+<!-- Middle Section: Archetype Matrix & Visualizer -->
+<div class="grid grid-cols-2 gap-4">
+<!-- Left: Tone Archetype & Relationship Logic -->
+<section class="glassmorphism rounded-xl p-3 h-48 flex flex-col">
+<h3 class="font-tech text-[10px] text-white/50 mb-2">TONE ARCHETYPE</h3>
+<div class="flex-1 relative border border-white/5 rounded bg-black/20 flex items-center justify-center">
+<!-- Abstract Neural Network Placeholder -->
+<div class="absolute inset-0 opacity-40 flex items-center justify-center p-4">
+<svg class="w-full h-full stroke-neon-cyan stroke-[0.5] fill-none" viewbox="0 0 100 100">
+<circle cx="50" cy="50" fill="currentColor" r="2"></circle>
+<circle cx="20" cy="30" fill="currentColor" r="2"></circle>
+<circle cx="80" cy="20" fill="currentColor" r="2"></circle>
+<circle cx="30" cy="80" fill="currentColor" r="2"></circle>
+<circle cx="70" cy="70" fill="currentColor" r="2"></circle>
+<path d="M50 50 L20 30 M50 50 L80 20 M50 50 L30 80 M50 50 L70 70 M20 30 L80 20 M30 80 L70 70"></path>
+</svg>
+</div>
+<div class="z-10 text-center">
+<p class="font-tech text-[10px] text-neon-cyan">FORMAL_NEUTRAL</p>
+<p class="text-[8px] text-slate-400">LOGIC: STATIC</p>
+</div>
+</div>
+</section>
+<!-- Right: Visual Feedback Monitor -->
+<section class="glassmorphism rounded-xl p-3 h-48 flex flex-col">
+<h3 class="font-tech text-[10px] text-white/50 mb-2">FEEDBACK LAYER</h3>
+<div class="flex-1 rounded border border-white/5 bg-slate-900 overflow-hidden relative group">
+<img class="w-full h-full object-cover opacity-50 grayscale hover:grayscale-0 transition-all duration-500" data-alt="Abstract cinematic frame with high contrast and digital artifacts" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCkKedHKnj5RexPqIuRTWhtDBCMeMVPrzzj1mmcsbReLnQPmNca7H_z_QCbgGN3ujnq1AC93cBc7xEHC6MeN6VOp4dOLryehL7IW7dkigUERiXzFooddcKVdNatyjMIdOqjGKgIwkKNpLFBYSbl4-B9CBZckIm5zBIIYmcTiBb1hyp28vhO_4Glps7i1gIkLoKQGa1Xo8gE9UzmTiEhqfHbs-PYs_cM0EOsjIe806KfbfZLStkqh2T6cJWeyly66279iZkIklV3q4Hq"/>
+<div class="absolute bottom-2 left-2 flex gap-1">
+<span class="w-1 h-1 bg-neon-cyan animate-pulse rounded-full"></span>
+<span class="text-[8px] font-tech text-neon-cyan">RECORDING</span>
+</div>
+</div>
+<div class="mt-2 flex justify-between">
+<span class="font-tech text-[9px] text-slate-500">META: 404B</span>
+<span class="font-tech text-[9px] text-slate-500">ISO: 800</span>
+</div>
+</section>
+</div>
+<!-- Controls: Skeuomorphic Knobs & Switches -->
+<section class="mt-2 px-2 flex flex-col gap-6">
+<div class="flex justify-around items-end">
+<!-- Knob 1 -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 rounded-full knob-radial flex items-center justify-center relative">
+<div class="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center">
+<div class="w-1 h-4 bg-neon-cyan/80 rounded-full absolute top-1 origin-bottom rotate-[45deg] shadow-[0_0_5px_#00f3ff]"></div>
+<div class="w-6 h-6 rounded-full bg-titanium/50 border border-black/50 shadow-inner"></div>
+</div>
+</div>
+<span class="font-tech text-[9px] text-slate-400">EMOTIONAL INTENSITY</span>
+</div>
+<!-- AI Director Mode Master Switch -->
+<div class="flex flex-col items-center gap-4 pb-2">
+<div class="w-12 h-20 bg-titanium rounded-xl border border-white/10 p-1 shadow-2xl relative flex flex-col items-center justify-between">
+<div class="w-full h-1/2 rounded-lg bg-primary/20 border border-primary/40 flex items-center justify-center">
+<div class="w-4 h-4 rounded-full border-2 border-primary shadow-[0_0_10px_#000dff]"></div>
+</div>
+<div class="w-8 h-8 rounded-full bg-slate-700 border-2 border-black/40 shadow-inner translate-y-[-2px]"></div>
+</div>
+<span class="font-tech text-[10px] text-neon-cyan font-bold">AI DIRECTOR</span>
+</div>
+<!-- Knob 2 -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 rounded-full knob-radial flex items-center justify-center relative">
+<div class="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center">
+<div class="w-1 h-4 bg-primary/80 rounded-full absolute top-1 origin-bottom rotate-[-30deg] shadow-[0_0_5px_#000dff]"></div>
+<div class="w-6 h-6 rounded-full bg-titanium/50 border border-black/50 shadow-inner"></div>
+</div>
+</div>
+<span class="font-tech text-[9px] text-slate-400">SLANG DENSITY</span>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Interface: Visualizer & Navigation -->
+<div class="absolute bottom-0 left-0 right-0 z-20">
+<!-- Frequency Visualizer Layer -->
+<div class="h-12 w-full bg-black/40 flex items-end justify-center gap-[2px] px-4 pb-2 overflow-hidden border-t border-white/5">
+<!-- Translation Confidence Waveform -->
+<div class="w-1 bg-neon-cyan/40 rounded-t h-[30%]"></div>
+<div class="w-1 bg-neon-cyan/50 rounded-t h-[50%]"></div>
+<div class="w-1 bg-neon-cyan/60 rounded-t h-[80%]"></div>
+<div class="w-1 bg-neon-cyan/40 rounded-t h-[40%]"></div>
+<div class="w-1 bg-primary/60 rounded-t h-[60%]"></div>
+<div class="w-1 bg-primary/80 rounded-t h-[95%]"></div>
+<div class="w-1 bg-primary/60 rounded-t h-[70%]"></div>
+<div class="w-1 bg-neon-cyan/60 rounded-t h-[40%]"></div>
+<div class="w-1 bg-neon-cyan/80 rounded-t h-[85%]"></div>
+<div class="w-1 bg-neon-cyan/60 rounded-t h-[60%]"></div>
+<div class="w-1 bg-primary/60 rounded-t h-[40%]"></div>
+<div class="w-1 bg-primary/40 rounded-t h-[20%]"></div>
+<div class="w-1 bg-primary/80 rounded-t h-[90%]"></div>
+<div class="w-1 bg-neon-cyan/60 rounded-t h-[50%]"></div>
+<div class="w-1 bg-neon-cyan/40 rounded-t h-[30%]"></div>
+<div class="w-1 bg-primary/80 rounded-t h-[75%]"></div>
+<div class="w-1 bg-primary/60 rounded-t h-[40%]"></div>
+</div>
+<!-- BottomNavBar Component -->
+<nav class="flex gap-2 border-t border-white/5 bg-charcoal px-4 pb-6 pt-2">
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-neon-cyan" href="#">
+<span class="material-symbols-outlined text-[24px]">terminal</span>
+<p class="text-[9px] font-tech uppercase tracking-tighter">Console</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500" href="#">
+<span class="material-symbols-outlined text-[24px]">hub</span>
+<p class="text-[9px] font-tech uppercase tracking-tighter">Logic</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500" href="#">
+<span class="material-symbols-outlined text-[24px]">monitoring</span>
+<p class="text-[9px] font-tech uppercase tracking-tighter">Stats</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500" href="#">
+<span class="material-symbols-outlined text-[24px]">tune</span>
+<p class="text-[9px] font-tech uppercase tracking-tighter">Config</p>
+</a>
+</nav>
+</div>
+<!-- Brushed Titanium Overlay effect -->
+<div class="pointer-events-none absolute inset-0 brushed-metal opacity-20 z-0"></div>
+</div>
+</body></html>
