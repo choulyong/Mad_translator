@@ -20,6 +20,8 @@ module.exports = {
       restart_delay: 3000,
       env: {
         PYTHONPATH: "C:\\Vibe Coding\\rename\\backend",
+        PYTHONUTF8: "1",
+        PYTHONIOENCODING: "utf-8"
       }
     }
   ],

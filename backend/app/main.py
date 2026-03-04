@@ -94,7 +94,7 @@ async def shutdown_event():
 # ═══════════════════════════════════════════════════════════════════
 
 class WebSocketManager:
-    """WebSocket 연결 관리 — 여러 클라이언트에게 job 업데이트 브로드캐스트"""
+    """WebSocket 연결 관리 - 여러 클라이언트에게 job 업데이트 브로드캐스트"""
     def __init__(self):
         self.active_connections: dict = {}  # {job_id: [WebSocket, ...]}
 
@@ -142,7 +142,7 @@ subtitles_module.ws_manager = ws_manager
 @app.websocket("/api/v1/subtitles/ws/{job_id}")
 async def websocket_endpoint(websocket: WebSocket, job_id: str):
     """
-    WebSocket 엔드포인트 — 실시간 번역 진행률 스트림
+    WebSocket 엔드포인트 - 실시간 번역 진행률 스트림
 
     사용:
       ws://localhost:8020/api/v1/subtitles/ws/{job_id}

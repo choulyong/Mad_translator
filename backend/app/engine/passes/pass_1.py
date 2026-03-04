@@ -1,5 +1,5 @@
 """
-Pass 1: Main Translation — 메인 번역 (시맨틱 배칭 + Staggered Parallel)
+Pass 1: Main Translation - 메인 번역 (시맨틱 배칭 + Staggered Parallel)
 
 역할:
 - 시맨틱 배칭으로 자막 분할
@@ -91,7 +91,7 @@ async def run_pass_1(
     tone_memory: List[Dict[str, Any]] = []
     total_applied = 0
     failed_batches: set = set()
-    CONCURRENCY = 7      # 최대 동시 LLM 호출 수 (Semaphore만으로 제어 — Stagger 이벤트 제거)
+    CONCURRENCY = 7      # 최대 동시 LLM 호출 수 (Semaphore만으로 제어 - Stagger 이벤트 제거)
 
     batch_events = [asyncio.Event() for _ in range(num_batches)]
     stagger_results: Dict[int, bool] = {}
@@ -207,7 +207,7 @@ async def run_pass_1(
                 current_mood=current_mood
             )
 
-            # 중간 결과 업데이트 (폴링용) — speaker 포함
+            # 중간 결과 업데이트 (폴링용) - speaker 포함
             job["partial_subtitles"] = [
                 {
                     "id": b.get("id"),
@@ -228,7 +228,7 @@ async def run_pass_1(
             return False
 
     async def staggered_worker(idx: int) -> bool:
-        """Semaphore 기반 병렬 처리 (최대 CONCURRENCY개 동시 — Stagger 제거)"""
+        """Semaphore 기반 병렬 처리 (최대 CONCURRENCY개 동시 - Stagger 제거)"""
         async with semaphore:
             if job.get("cancelled"):
                 batch_events[idx].set()

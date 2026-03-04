@@ -1,5 +1,5 @@
 """
-Batching Utilities — 시맨틱 배칭 및 Hard Binding
+Batching Utilities - 시맨틱 배칭 및 Hard Binding
 
 역할:
 - 타임코드 파싱 및 처리
@@ -101,9 +101,9 @@ def apply_hard_binding(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     Returns:
         결합된 새 blocks 리스트
     """
-    # 접속사 패턴 (영어) — 문장 중간에서 끊기는 경우
+    # 접속사 패턴 (영어) - 문장 중간에서 끊기는 경우
     CONTINUATION_PATTERN = re.compile(
-        r'(\.\.\.|…|—|–|,\s*$|'
+        r'(\.\.\.|…|-|–|,\s*$|'
         r'\b(and|but|or|nor|so|yet|because|although|while|if|when|as|since|however|therefore|meanwhile|then|so that|in order|except|unless|until|whether|though|even though|even if)\s*$)',
         re.IGNORECASE
     )
@@ -146,7 +146,7 @@ def apply_hard_binding(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def build_semantic_batches(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    시맨틱 배칭 — 장면 전환 기준 15~50 블록 단위로 분할
+    시맨틱 배칭 - 장면 전환 기준 15~50 블록 단위로 분할
 
     Returns:
         list of {start_idx, end_idx, blocks, scene_break, batch_mood}

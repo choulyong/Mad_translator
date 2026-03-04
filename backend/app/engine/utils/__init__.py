@@ -1,5 +1,5 @@
 """
-Engine Utils — 번역 엔진 유틸리티 모듈
+Engine Utils - 번역 엔진 유틸리티 모듈
 
 제공 모듈:
 - parsing: JSON 정제 및 파싱

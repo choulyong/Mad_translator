@@ -1,5 +1,5 @@
 """
-Tone Memory Utilities — 톤(존대/반말) 메모리 및 일관성 관리
+Tone Memory Utilities - 톤(존대/반말) 메모리 및 일관성 관리
 
 역할:
 - 한국어 톤 감지 (존대/반말)
@@ -61,7 +61,7 @@ def check_qc_needed(
 
     # 2. 확정 말투 vs 실제 어미 일치율 체크
     if not confirmed_levels:
-        return True, "confirmed_levels 없음 — QC 실행"
+        return True, "confirmed_levels 없음 - QC 실행"
 
     mismatch_count = 0
     total_locked = 0
@@ -99,9 +99,9 @@ def check_qc_needed(
             return True, f"톤 불일치 {mismatch_count}/{total_locked} ({match_ratio:.0%} < {tone_threshold:.0%})"
         else:
             # 톤 일치율 높아도 QC는 항상 수행 (의미오류/번역투 검수 필요)
-            return True, f"톤 일치율 {match_ratio:.0%} — QC 수행(번역투/의미 검수)"
+            return True, f"톤 일치율 {match_ratio:.0%} - QC 수행(번역투/의미 검수)"
 
-    return True, "샘플 부족 — QC 실행"
+    return True, "샘플 부족 - QC 실행"
 
 
 def extract_tone_from_batch(
@@ -235,7 +235,7 @@ def update_confirmed_speech_levels(
 
 def detect_dedup(blocks: List[Dict[str, Any]]) -> List[int]:
     """
-    연속 중복 감지 — 5자 최소가드 + 원문 유사도 안전 필터
+    연속 중복 감지 - 5자 최소가드 + 원문 유사도 안전 필터
 
     Returns:
         중복으로 비워야 할 블록의 인덱스 리스트

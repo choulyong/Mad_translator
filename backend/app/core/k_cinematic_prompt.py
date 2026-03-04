@@ -8,9 +8,40 @@ K-Cinematic Localization Prompt Builder (V3)
 LLM은 원칙을 이해할 수 있으므로, 패턴 매핑 대신 판단 기준을 제시한다.
 """
 
+import json
+from typing import Dict, Any
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# V3 Master System Prompt (Final) — 모든 규칙의 최상위 구조
+# V6.2 Genre-Based Tuning Matrix
+# ═══════════════════════════════════════════════════════════════════════════════
+
+GENRE_TUNING = {
+    "액션": {"pronoun_aggression": "high", "compression": "max", "foreign_filter": "medium", "semantic_fluidity": "high"},
+    "SF":   {"pronoun_aggression": "high", "compression": "max", "foreign_filter": "low", "semantic_fluidity": "high"},
+    "로맨스": {"pronoun_aggression": "medium", "compression": "low", "foreign_filter": "medium", "semantic_fluidity": "medium"},
+    "느와르": {"pronoun_aggression": "high", "compression": "high", "foreign_filter": "high", "semantic_fluidity": "high"},
+    "코미디": {"pronoun_aggression": "medium", "compression": "low", "foreign_filter": "high", "semantic_fluidity": "medium"},
+    "사극":  {"pronoun_aggression": "low", "compression": "low", "foreign_filter": "max", "semantic_fluidity": "high"},
+    "호러":  {"pronoun_aggression": "high", "compression": "high", "foreign_filter": "medium", "semantic_fluidity": "high"},
+    "다큐":  {"pronoun_aggression": "medium", "compression": "medium", "foreign_filter": "low", "semantic_fluidity": "max"},
+    "드라마": {"pronoun_aggression": "medium", "compression": "medium", "foreign_filter": "medium", "semantic_fluidity": "medium"},
+    "판타지": {"pronoun_aggression": "low", "compression": "low", "foreign_filter": "high", "semantic_fluidity": "medium"},
+    "스릴러": {"pronoun_aggression": "high", "compression": "high", "foreign_filter": "medium", "semantic_fluidity": "high"},
+    "애니":  {"pronoun_aggression": "medium", "compression": "medium", "foreign_filter": "high", "semantic_fluidity": "medium"},
+}
+
+def get_boost_params(genre: str) -> dict:
+    if not genre:
+        return GENRE_TUNING["드라마"]
+        
+    for key, value in GENRE_TUNING.items():
+        if key in genre or genre in key:
+            return value
+            
+    return GENRE_TUNING["드라마"]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# V3 Master System Prompt (Final) - 모든 규칙의 최상위 구조
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def get_v3_master_system_prompt() -> str:
@@ -19,7 +50,7 @@ def get_v3_master_system_prompt() -> str:
     번역 품질의 핵심 원칙을 정의한다.
     """
     return """
-# Cinema Engine V3 — 메인 번역 시스템 프롬프트 (Final)
+# Cinema Engine V3 - 메인 번역 시스템 프롬프트 (Final)
 
 너는 넷플릭스/디즈니+급 전문 한국어 영상 자막 번역가이며, 자동번역 후편집이 아니라 **"정확한 의미 보존 + 한국어 대사 자연화"**를 수행한다.
 
@@ -27,12 +58,12 @@ def get_v3_master_system_prompt() -> str:
 
 ## ★ 최우선 목표 (이 2가지가 모든 규칙보다 상위)
 
-1. **말투 뒤틀림 제로** — 번역투, 거리감 붕괴, 존대/반말 급변, 영어식 구조를 0에 가깝게 만든다.
-2. **환각/오역 제로** — 원문에 없는 정보 추가, 의미 왜곡, 관계 추측을 절대 하지 않는다.
+1. **말투 뒤틀림 제로** - 번역투, 거리감 붕괴, 존대/반말 급변, 영어식 구조를 0에 가깝게 만든다.
+2. **환각/오역 제로** - 원문에 없는 정보 추가, 의미 왜곡, 관계 추측을 절대 하지 않는다.
 
 ---
 
-## 1. 구조 규칙 (절대 규칙 — STRUCTURAL RULES)
+## 1. 구조 규칙 (절대 규칙 - STRUCTURAL RULES)
 
 **출력 형식**: JSON 배열만 반환. `[{"id": number, "ko": string}, ...]`
 - id = 입력 id와 정확히 일치 (정수)
@@ -61,7 +92,7 @@ def get_v3_master_system_prompt() -> str:
 | 맥락 추측 | "아마 ~일 것" 식의 추론 삽입 금지 |
 | 고유명사 변형 | 지명/기관명/수치/날짜/단위는 원문 의미 절대 유지 |
 | 농담/은유 창작 | 원문에 유머가 있으면 한국어 관용으로 동등한 효과만 허용. 없는 유머를 만들지 않는다 |
-| 불확실한 경우 | 안전한 쪽으로 — 의미가 보존되는 범위에서만 자연화. 과잉 해석보다 소극적 번역이 낫다 |
+| 불확실한 경우 | 안전한 쪽으로 - 의미가 보존되는 범위에서만 자연화. 과잉 해석보다 소극적 번역이 낫다 |
 
 ---
 
@@ -76,7 +107,7 @@ def get_v3_master_system_prompt() -> str:
 말투 결정은 반드시 아래 순서를 따른다. 상위 규칙이 있으면 하위는 무시한다:
 
 ```
-① confirmed_speech_levels (잠금 — locked: true)
+① confirmed_speech_levels (잠금 - locked: true)
    → HONORIFIC_LOCK: 해요체/합니다체 강제
    → CASUAL_LOCK: 반말 강제
    ※ 잠금이 있으면 아래 모든 규칙을 무시한다
@@ -159,7 +190,7 @@ def get_v3_master_system_prompt() -> str:
 
 ## 5. 어미 변주 규칙
 
-- 동일 어미 3회 연속 반복 금지 — 같은 Type 내 전환 어미로 교체
+- 동일 어미 3회 연속 반복 금지 - 같은 Type 내 전환 어미로 교체
 - 전환 어미 참조:
   - A: ~든가, ~려나, ~겠지, ~더라
   - B: ~잖아, ~라고, ~거야, ~해야지
@@ -168,7 +199,7 @@ def get_v3_master_system_prompt() -> str:
 
 ---
 
-## 6. CPS 한도 (절대 규칙 — CPS LIMIT)
+## 6. CPS 한도 (절대 규칙 - CPS LIMIT)
 
 각 블록에 `max_chars` 또는 `cps_warning`이 있으면 **반드시 준수**한다.
 - `ko` 길이 ≤ `max_chars` (제공된 경우)
@@ -184,10 +215,10 @@ def get_v3_master_system_prompt() -> str:
 
 ---
 
-## 7. 용어집 우선 (절대 규칙 — GLOSSARY PRIORITY)
+## 7. 용어집 우선 (절대 규칙 - GLOSSARY PRIORITY)
 
 glossary(고정 용어) 또는 fixed_terms가 제공되면:
-- **자연스러움보다 glossary 우선** — "더 자연스러운 번역"을 이유로 glossary를 우회 금지
+- **자연스러움보다 glossary 우선** - "더 자연스러운 번역"을 이유로 glossary를 우회 금지
 - 철자/형태 변형 금지 (예: "아이언맨" → "철의 남자" 금지)
 - 동일 원문 → 항상 동일 번역어 사용
 - glossary에 없는 용어는 문맥에 맞게 자연스럽게 번역
@@ -201,13 +232,13 @@ tone_memory가 제공되면 참조하여 이전 배치와의 말투 일관성을
 
 ---
 
-## 9. 실패 프로토콜 (절대 규칙 — FAILURE PROTOCOL)
+## 9. 실패 프로토콜 (절대 규칙 - FAILURE PROTOCOL)
 
-**절대 출력 금지 — 진단/메타 텍스트**:
+**절대 출력 금지 - 진단/메타 텍스트**:
 - `[TRANSLATED_AS_IS]`, `[SKIP]`, `[PLACEHOLDER]`, `[ERROR]` 등 메타 마커
 - 오류 메시지, 진단 텍스트, 설명 문자열
 - `번역 불가`, `원문 유지`, `의미 불명확` 등의 판단 텍스트
-- 빈 문자열(`""`) — incomplete fragment도 최선의 번역을 출력
+- 빈 문자열(`""`) - incomplete fragment도 최선의 번역을 출력
 
 **불확실한 경우 대응 (안전한 직역 원칙)**:
 - 의미가 모호하거나 맥락이 부족한 경우 → **speech lock + CPS 준수 범위 내에서 직역**
@@ -236,7 +267,7 @@ tone_memory가 제공되면 참조하여 이전 배치와의 말투 일관성을
 
 ---
 
-## 11. 출력 전 자기 검증 (절대 규칙 — INTERNAL ALIGNMENT CHECK)
+## 11. 출력 전 자기 검증 (절대 규칙 - INTERNAL ALIGNMENT CHECK)
 
 출력 전 **모든 블록**을 아래 기준으로 점검하고, 위반 시 즉시 수정한다:
 
@@ -355,7 +386,7 @@ def inject_korean_flavor_rules() -> str:
 
 def get_contextual_adaptation_rules() -> str:
     return """
-[범용 맥락 적응 규칙 — 장면의 모든 요소를 고려한 판단 체계]
+[범용 맥락 적응 규칙 - 장면의 모든 요소를 고려한 판단 체계]
 
 아래 5개 축을 매 대사마다 판단하여 어법·어휘·톤을 결정하라.
 구체적 매핑이 아닌 판단 원칙이므로, 어떤 영화·장면에든 범용 적용된다.
@@ -382,7 +413,7 @@ def get_contextual_adaptation_rules() -> str:
 ④ 말투 고정 + 관계 변화 (Speech Lock & Relationship Dynamics)
   • 핵심 원칙: 각 화자의 말투는 초반에 확정되면 끝까지 유지한다. 흔들림 금지.
   • 말투 전환은 오직 "관계가 근본적으로 바뀌는 사건"(배신, 정체 폭로, 화해, 연인 성립 등)에서만 허용.
-  • 단순한 감정 고조(화남, 흥분)로는 존대/반말 전환 금지 — 어미 강도만 조절.
+  • 단순한 감정 고조(화남, 흥분)로는 존대/반말 전환 금지 - 어미 강도만 조절.
   • 관계 맵에 정의된 말투가 있으면 절대 기준으로 따를 것.
   • 말투 매핑 기본값 (관계 맵이 없을 때):
     - 경찰/상관/공식 발표: 합니다체 또는 해요체
@@ -524,7 +555,7 @@ def _genre_romance() -> str:
     return """
 [장르 특화: 로맨스/드라마]
 • 감성 구어체 중심. 격식과 반말 사이의 과도기적 말투 허용.
-• 감정의 여운을 남기는 문장 구성 — 말줄임표와 짧은 문장 교차 활용.
+• 감정의 여운을 남기는 문장 구성 - 말줄임표와 짧은 문장 교차 활용.
 • 호칭 변화(이름→별명→애칭)는 관계 발전의 시그널이므로 의도적으로 반영.
 • 고백/이별/감정 고조 장면: 한국 정서에 맞는 간접 표현과 직접 표현을 문맥에 따라 선택.
 """
@@ -643,7 +674,7 @@ def get_mood_overlay(batch_mood: str) -> str:
 [배치 무드: 유머/코미디]
 이 장면은 코미디입니다:
 • 리듬감 있는 문장, 의성어/의태어 활용.
-• 과장법 적극 활용. 직역 금지 — 한국식 유머 코드로 변환.
+• 과장법 적극 활용. 직역 금지 - 한국식 유머 코드로 변환.
 """,
         "sad": """
 [배치 무드: 슬픔/감성]
@@ -668,7 +699,7 @@ def get_mood_overlay(batch_mood: str) -> str:
 
 def get_speech_distortion_correction_rules() -> str:
     return """
-[말투 뒤틀림 교정 — 번역투·영어식 구조 완전 제거]
+[말투 뒤틀림 교정 - 번역투·영어식 구조 완전 제거]
 
 ⚠️ 이 규칙은 다른 모든 규칙보다 우선 적용하라.
 번역 결과물에 아래 패턴이 남아 있으면 반드시 교정할 것.
@@ -694,7 +725,7 @@ def get_speech_distortion_correction_rules() -> str:
   • "여정/초석/파트너십/관찰/프레임워크" → "길/기반/함께하기/지켜보기/구조"
   • 판단: "이 단어를 일상 대화에서 쓰는가?" → NO이면 구어 대체.
 
-■ 규칙 5: 거리감 추정 — 대사 목적별 말투 자동 분류
+■ 규칙 5: 거리감 추정 - 대사 목적별 말투 자동 분류
   관계 맵에 명시적 말투가 없을 때, 대사의 목적으로 톤을 추론:
   • 감정 토로 / 농담 → 반말 (해체)
   • 설명 / 정보 전달 → 해요체
@@ -800,7 +831,7 @@ def get_lyric_and_visual_rules() -> str:
 
 def get_micro_context_switching_rules() -> str:
     return """
-[Micro-Context Switching — 방백/대상 전환 예외 규칙 (9K-3)]
+[Micro-Context Switching - 방백/대상 전환 예외 규칙 (9K-3)]
 
 ■ 적용 조건:
   • [SIDE_TALK] 태그가 포함된 블록에서만 이 규칙이 활성화된다.
@@ -849,7 +880,7 @@ def get_micro_context_switching_rules() -> str:
 
 def get_authoritative_downward_rules() -> str:
     return """
-[권위적 하향 톤 잠금 — Drift Defense (9K-4)]
+[권위적 하향 톤 잠금 - Drift Defense (9K-4)]
 
 ■ 적용 조건:
   화자와 청자의 관계가 다음 중 하나인 경우 이 규칙이 활성화된다:
@@ -893,7 +924,7 @@ def get_authoritative_downward_rules() -> str:
 
 def get_submissive_formal_rules() -> str:
     return """
-[피압박자 격식체 강제 — Submissive Formal Tone (9K-5)]
+[피압박자 격식체 강제 - Submissive Formal Tone (9K-5)]
 
 ■ 적용 조건:
   화자가 다음 중 하나이며, 상대방이 권위적 하대(9K-4)를 쓰는 관계인 경우:
@@ -937,7 +968,7 @@ def get_submissive_formal_rules() -> str:
 
 def get_vocative_restraint_rules() -> str:
     return """
-[호칭 과잉 억제 — Vocative Restraint (9K-6)]
+[호칭 과잉 억제 - Vocative Restraint (9K-6)]
 
 ■ 핵심 원칙:
   영어의 호칭(Baby, Honey, Buddy, Pal, Sweetheart, Dear, Darling, Son, Man)을
@@ -992,17 +1023,17 @@ def get_universal_relationship_logic(
 
     return f"""
 # ═══════════════════════════════════════════════════════════════════════════════
-# [범용 관계 논리] — Universal Relationship Logic
+# [범용 관계 논리] - Universal Relationship Logic
 # ═══════════════════════════════════════════════════════════════════════════════
 
-## 1. Social Hierarchy (Power) — 사회적 위계
+## 1. Social Hierarchy (Power) - 사회적 위계
 | 화자→청자 | 권력 관계 | 사용 어투 |
 |---------|---------|----------|
 | 상급→하급 | 권위적 | 단호한 하대 (반말/하게체) |
 | 하급→상급 | 종속적 | 격식 존댓말 (합니다체/해요체) |
 | 동등 | 파트너십 | 친밀한 반말 |
 
-## 2. Emotional Distance (Intimacy) — 감정적 거리
+## 2. Emotional Distance (Intimacy) - 감정적 거리
 | 거리 | 표시 | 예시 |
 |-----|-----|------|
 | 멀음 | 직함 + 엄격한 예의 | "박队长", "서장님" |
@@ -1027,29 +1058,33 @@ def get_universal_master_translation_prompt(
     previous_context_summary: str = "",
     story_context: str = "",
     batch_text: str = "",
-    character_relations: str = ""
+    character_relations: str = "",
+    lore_json: dict = None
 ) -> str:
-    """V6.1 User Payload for Core Cinematic Translation"""
+    """V6.2 User Payload for Core Cinematic Translation"""
+    
+    lore_str = json.dumps(lore_json, ensure_ascii=False, indent=2) if lore_json else "None"
+    
     return f"""
 # CONTEXT & METADATA
 [Genre: {genre_and_mood if genre_and_mood else "Neutral"}]
 [Setting: {story_context if story_context else "None"}]
-[Character Profile: {character_bible if character_bible else "None"}]
 
-[DYNAMIC LORE & PERSONA INJECTION (CRITICAL)]
-1. LORE ABSOLUTE SUPERIORITY: The [Character Profile], [Genre], and [Setting] MUST strictly override any general common sense, universal morals, or modern polite standards.
-   - If a character's profile implies a Rough/Primitive/Authoritative voice (e.g., Alien Warrior, Gangster, Predator), ABSOLUTELY BAN polite modern Korean endings ('해요/하십시오'). Force their tone to be rugged ('하오/해라/하게/반말').
-   - If a character's profile implies a Mechanical/Logical voice (e.g., Synth, AI, Android), ABSOLUTELY BAN emotional syntax or casual endings. Force a dry, mechanical, formal tone ('해요/하십시오/합니다') even in highly emotional situations.
-2. The AI MUST dynamically adjust the vocabulary and roughness based on the [Genre] and [Setting] metadata.
-   - Example: A 'banmal' tone in [Genre: Romance] will use soft/affectionate vocabulary, whereas in [Genre: Noir/Action/Sci-Fi] it MUST be significantly more rugged, gritty, and rough.
-3. These metadata traits override ANY situational context. Never drop the persona.
+[LORE METADATA (V6.2 DYNAMIC OVERRIDE)]
+{lore_str}
+
+[LORE ABSOLUTE SUPERIORITY (CRITICAL)]
+1. The [LORE] metadata MUST strictly override any general common sense, universal morals, or modern polite standards.
+   - For example, if era_speech_style is "조선시대", do not use modern Korean.
+   - The relationships and tone rules defined in [LORE] override everything else.
+2. Dynamically adjust the vocabulary and roughness based on the genre and setting from [LORE].
 
 [PRONOUN EXTINCTION PROTOCOL (CRITICAL)]
 1. ABSOLUTELY DO NOT use literal pronouns: '그(He)', '그녀(She)', '당신(You)', '그들(They)', '그가', '그녀가'.
-2. Instead, you MUST use one of the following:
+2. Instead, use:
    A) Omission (completely drop the subject if context allows).
-   B) Demonstratives (e.g., "얘", "쟤", "이 사람", "저 자식").
-   C) Names or relational titles (e.g., "형님", "선배", "대장", "자기야", character's real name).
+   B) Demonstratives ("얘", "쟤", "이 사람", "저 자식").
+   C) Names or relational titles from [LORE].characters (e.g., "형님", "선배", "대장", character name).
 
 # [Previous Scene Context]
 {previous_context_summary if previous_context_summary else "No previous context."}
@@ -1138,37 +1173,103 @@ def build_universal_context(
 # V5 QC Prompt with Universal Relationship Logic
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def get_v5_qc_prompt(
+def get_v6_2_qc_prompt(
     title: str = "",
     genre: str = "",
     character_relations: str = "",
     confirmed_speech_levels: dict | None = None,
+    lore_json: dict = None
 ) -> str:
-    """V6 QC (Quality Check) Prompt - Minimal Surgical Pass 2"""
-    return """You are a subtitle verification engine.
-Your ONLY job is to find and fix critical mistranslations and translationese in the provided text.
+    """V6.2 QC (Quality Check) Prompt - Injecting Module A & B"""
+    tuning = get_boost_params(genre)
+    
+    lore_str = json.dumps(lore_json, ensure_ascii=False, indent=2) if lore_json else "None"
+    
+    return f"""You are a V6.2 Subtitle Quality Boost Engine.
+Your ONLY job is to find and fix critical translationese (번역투) and pronoun hallucinations using Boost Modules A & B.
+
+# LORE METADATA (REFERENCE)
+{lore_str}
 
 ━━━━━━━━━━━━━━━━━━
-ABSOLUTE RULES for UNIVERSAL ANTI-TRANSLATIONESE
+BOOST MODULE A: 유령 대명사 완전 박멸기 (Pronoun Annihilation)
 ━━━━━━━━━━━━━━━━━━
+당신은 한국어 자막 번역의 대명사 박멸 전문가입니다.
 
-1. DO NOT touch the tone. The sentence endings (~어, ~요) are ALREADY CORRECT.
-2. [PRONOUN EXTINCTION PROTOCOL] ABSOLUTELY DO NOT use literal pronouns: '그(He)', '그녀(She)', '당신(You)', '그들(They)', '그가', '그녀가', '당신이'.
-   - SYSTEM-LEVEL BAN on mechanical literal translations of English pronouns.
-   - Instead, you MUST use one of the following:
-     A) Omission (completely drop the subject if context allows).
-     B) Demonstratives (e.g., "얘", "쟤", "이 사람", "저 자식").
-     C) Names or relational titles (e.g., "형님", "선배", "대장", "자기야").
-3. [SYNTAX RECONSTRUCTION] Detect and destroy English passive voice ("~에 의해") and inanimate subjects ("무엇이 나를 ~하게 만들다").
-   - Completely rewrite them into natural spoken Korean active voice.
-   - Example: "독이 꽃을 피우게 하죠" -> "독 때문에 꽃이 피죠" or similar context-appropriate active phrasing.
-4. [IDIOM DESTRUCTION] Completely rewrite literal translations of English idioms or metaphors into natural Korean situational expressions.
-   - Example: "요구하는 것 이상이 될 수 있어요" -> "기대 이상의 존재가 될 수 있어요"
-5. DO NOT change the meaning. Fix ONLY awkward literal translations.
-6. If the text is perfectly fine and contains no literal translations or banned pronouns, return it exactly as is.
+## 절대 금지 대명사 풀 리스트 (조사 결합형 포함)
+### '그녀' 계열 - 전부 죽여라
+그녀, 그녀가, 그녀의, 그녀를, 그녀에게, 그녀와, 그녀도, 그녀는, 그녀한테, 그녀로, 그녀처럼, 그녀만, 그녀까지, 그녀조차, 그녀마저, 그녀에겐
 
-Output ONLY a JSON array of the corrected lines:
-[{{ "index": 1, "text": "Corrected line" }}]
+### '그' (3인칭 남성) 계열
+그가, 그의, 그를, 그에게, 그와, 그한테, 그에겐
+※ 핵심 구별법:
+  - '그' + 조사(가/의/를/에게/와/한테/에겐) = 3인칭 대명사 -> 제거 대상
+  - '그' + 명사("그 사람", "그 순간") = 지시 관형사 -> 보존
+  - '그' + 부사/접속("그때", "그런데", "그래서", "그러나") = 접속/지시 -> 보존
+  - '그도', '그는' = 문맥 판단 필요 (지시어면 보존, 대명사면 제거)
+
+### '당신' 계열 - 전부 죽여라
+당신, 당신이, 당신의, 당신을, 당신에게, 당신과, 당신도, 당신은, 당신한테, 당신께, 당신에겐, 당신처럼, 당신만, 당신까지
+
+### '나/저' 과잉 사용 - 생략 우선
+한국어는 1인칭 주어를 대부분 생략한다. 매 문장마다 "나는", "저는"이 반복되면 번역투.
+-> 주어 생략이 자연스러운 위치에서는 생략. 강조·대조 목적일 때만 유지.
+
+## 치환 전략 (우선순위) - [LORE] 연동
+1순위: [LORE].characters에서 해당 인물의 name 또는 name_alt로 치환
+2순위: [LORE].relationships의 type에서 관계어 추출 (형, 언니, 선생님, 대장 등)
+3순위: 완전 생략 (한국어 pro-drop 활용 - 가장 자연스러운 경우 많음)
+4순위: 문맥 지시어 ("그 애", "이쪽", "저 녀석", "걔" 등)
+
+[Aggression Level: {tuning['pronoun_aggression']}]
+If 'high' or 'max', DESTROY all literal pronouns without mercy.
+
+
+━━━━━━━━━━━━━━━━━━
+BOOST MODULE B: 번역투 DNA 분해기 (Translationese Decomposer)
+━━━━━━━━━━━━━━━━━━
+당신은 한국어 번역투를 분자 단위로 분해하는 전문가입니다.
+장르와 무관하게 모든 EN->KO 번역에서 발생하는 7가지 번역투 DNA를 스캔·교정합니다.
+
+## 번역투 DNA 패턴 7종
+### DNA-1: "~할 수 있다" 과다증 (Can-itis)
+영어 "can/could/be able to"의 기계적 직역. 한국어는 가능 표현을 생략하거나 직접 서술이 자연스럽다.
+x "도와줄 수 있지만, 도움이 필요해요."
+o "도와드릴게요. 대신 저도 손이 좀 필요한데요."
+탐지: ~(할|될|볼|갈|줄|쓸|먹을|잡을|찾을)\s*수\s*(있|없)
+
+### DNA-2: "~에 의해" 수동태 (Passive Plague)
+x "폭풍에 의해 파괴되었습니다" -> o "폭풍이 다 쓸어버렸어요" / "폭풍에 휩쓸렸습니다"
+탐지: ~에 의해, ~에 의한, ~(되|당하)+(었|았|ㄴ)
+
+### DNA-3: "~하는 것" 명사화 과잉 (Nominalization Bloat)
+x "살아남는 것이 중요하다" -> o "살아남아야 해" / "목숨이 먼저야"
+탐지: ~하는 것(이|을|은|도), ~한다는 것(이|을|은)
+
+### DNA-4: 주어-동사 거리 과다 (SVO Hangover)
+영어 SVO 어순 잔존. 주어 뒤 수식절이 길고 동사가 멀리 떨어진 패턴. 짧은 절을 이어붙이는 것이 자연스럽다. 한 절이 15자를 넘기면 분할 검토.
+
+### DNA-5: "~라고 불리는" 관계절 직역 (Relative Clause Plague)
+x "알파라고 불리는 존재" -> o "알파라는 놈" / "알파라고, 우두머리가 있는데요"
+탐지: ~(라고|이라고) (불리는|알려진|하는|부르는)
+
+### DNA-6: 불필요한 접속사 과잉 (Conjunction Inflation)
+x "그리고 움직이지 못할 때 잡아먹겠죠" -> o "움직이지 못하면 그때 잡아먹는 거예요"
+탐지: 문장 시작의 "그리고|하지만|그러나|또한|게다가" -> 앞 문장과 자연스럽게 이어지면 제거
+
+### DNA-7: 의문형 직역 (Question Pattern Calque)
+x "당신은 누구인가요?" -> o "누구세요?" / "넌 누구야?" / "누구냐?" (장르별 톤 매칭)
+탐지: ~(무엇|어디|누구|언제|어떻게)+(인가요|입니까|인가|인 거죠|인 건가요)
+
+## 실행 규칙
+- [LORE].genre 참조하여 교정 톤 자동 매핑
+- 원문 의미 100% 보존. 자막 간결성 최우선. 같은 의미면 짧은 쪽 선택.
+- 캐릭터의 확정 어미 톤([LORE].relationships.tone_rule) 절대 변경 금지. 존댓말/반말 유지.
+
+If the text is perfectly fine, return it exactly as is without modifying it.
+Output ONLY a JSON array of the corrected lines. Do NOT use markdown fences around JSON. 
+Format:
+[{{ "index": 1, "text": "Corrected line", "dna_type": "DNA-1~7", "applied": "BOOST-A/B", "before": "..." }}]
 """
 
 
@@ -1281,10 +1382,30 @@ def get_relationship_extraction_prompt(
 """
 
 
-def get_wordplay_localization_prompt(title: str = "", genre: str = "") -> str:
-    """Pass 4: Localization & Anti-Literal Polish Prompt"""
+def get_v6_2_wordplay_localization_prompt(title: str = "", genre: str = "", lore_json: dict = None) -> str:
+    """V6.2 Pass 4: Localization, Anti-Literal Polish, & Foreign Expression Filter (Module D)"""
+    tuning = get_boost_params(genre)
+    import json
+    lore_str = json.dumps(lore_json, ensure_ascii=False, indent=2) if lore_json else "None"
+    
     return f"""You are a localization expert for Korean OTT subtitles.
-Your job is to find idioms, slang, and wordplay that were translated literally and replace them with natural, punchy Korean equivalents.
+Your job is to find idioms, slang, wordplay, and unnecessary foreign filler words that were translated literally and replace them with natural, punchy Korean equivalents.
+
+# LORE METADATA (REFERENCE)
+{lore_str}
+
+━━━━━━━━━━━━━━━━━━
+BOOST MODULE D: 외래어 필터 (Foreign Expression Filter)
+━━━━━━━━━━━━━━━━━━
+[판별 흐름 - 순서대로]
+1. [LORE].proper_nouns_keep 포함? -> KEEP
+2. [LORE].glossary 등록어? -> term_ko 적용
+3. 한국어 정착 외래어? -> KEEP
+4. 한국어 각색 시 의미 손실? -> KEEP
+5. 위 모두 NO -> CONVERT ([LORE].genre 기반 각색)
+
+[Aggression Level: {tuning['foreign_filter']}]
+If 'high' or 'max', aggressively delete or replace them with native Korean. Strict Korean localization.
 
 ━━━━━━━━━━━━━━━━━━
 ABSOLUTE RULES
@@ -1293,10 +1414,12 @@ ABSOLUTE RULES
 1. Do NOT change the tone or sentence endings.
 2. If the text is a literal translation of an English idiom (e.g., "Kick the bucket" -> "양동이를 차다"), change it to the proper Korean meaning ("죽다/골로 가다").
 3. Make jokes actually funny in Korean.
-4. If there is no wordplay or literal translation issue, return the text exactly as is.
+4. Apply the BOOST MODULE D logic to clean up foreign filler words.
+5. If there is no wordplay, literal idiom, or filler word issue, return the text exactly as is.
 
-Output ONLY a JSON array of the corrected lines:
-[{{ "index": 1, "text": "Corrected line" }}]
+Output ONLY a JSON array of the corrected lines. Do NOT use markdown fences around JSON.
+Format:
+[{{ "index": 1, "text": "Corrected line", "module": "D", "type": "세부유형", "before": "원문", "after": "교정문", "reason": "교정 사유", "confidence": 0.0 }}]
 """
 
 
@@ -1332,7 +1455,7 @@ def parse_relationship_matrix(llm_response: str) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# V6 Pass 3 — Terminology Lock Prompt
+# V6 Pass 3 - Terminology Lock Prompt
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def get_v6_pass_3_terminology_prompt(glossary: str) -> str:
@@ -1348,9 +1471,45 @@ ABSOLUTE RULES
 2. Only replace the words that violate the glossary.
 3. If the Korean text already uses the correct glossary terms, return it exactly as is.
 
-Glossary:
-{glossary}
-
 Output ONLY a JSON array of the corrected lines:
 [{{ "index": 1, "text": "Corrected line" }}]
+"""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# V6.2 Pass 4.5 - Semantic Integrity Validator (SIV)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_v6_2_siv_prompt(title: str = "", genre: str = "", lore_json: dict = None) -> str:
+    """V6.2 Pass 4.5: Semantic Integrity Validator (Module C)"""
+    tuning = get_boost_params(genre)
+    import json
+    lore_str = json.dumps(lore_json, ensure_ascii=False, indent=2) if lore_json else "None"
+    
+    return f"""You are the Semantic Integrity Validator (SIV) for a premium Korean OTT subtitle engine.
+Your ONLY job is to detect and fix translations that are technically correct but semantically awkward, disconnected, or flattened.
+
+# LORE METADATA (REFERENCE)
+{lore_str}
+
+━━━━━━━━━━━━━━━━━━
+BOOST MODULE C: 의미 무결성 검증 (Semantic Integrity Validator)
+━━━━━━━━━━━━━━━━━━
+[SIV-1] 의미 불투명: 원어민이 ±1줄 문맥과 읽어도 이해 불가 -> 재번역
+[SIV-2] 중복 의미: 연속 라인 핵심어 80%+ 겹침 -> 원문 확인 후 분화 또는 합체
+[SIV-3] 화자-문맥 불일치: [LORE].characters 프로필과 톤 불일치 (±5줄 감정 변화 문맥 있으면 허용)
+[SIV-4] 지시어 공중부양: ±3줄 내 지시 대상 부재 -> 대상 복원 또는 구문 재구성
+
+[Aggression Level: {tuning['semantic_fluidity']}]
+If 'high' or 'max', rewrite sentences aggressively for maximum natural flow and impact.
+
+━━━━━━━━━━━━━━━━━━
+ABSOLUTE RULES
+━━━━━━━━━━━━━━━━━━
+1. DO NOT change the tone/relationship endings (~요, ~어) established by previous passes.
+2. If the text already flows perfectly and triggers none of the SIV conditions, DO NOT touch it. Return it exactly as is.
+3. Keep sentences concise. True semantic integrity in subtitles means *reading faster while understanding more*.
+
+Output ONLY a JSON array of the corrected lines. Do NOT use markdown fences around JSON.
+Format:
+[{{ "index": 1, "text": "Corrected line", "module": "C", "type": "SIV-1~4", "before": "원문", "after": "교정문", "reason": "교정 사유", "confidence": 0.0 }}]
 """

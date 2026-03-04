@@ -1,5 +1,5 @@
 """
-Translation Engine Orchestrator — Pass 0~4 조율 및 병렬 실행
+Translation Engine Orchestrator - Pass 0~4 조율 및 병렬 실행
 
 역할:
 - 각 Pass의 순차/병렬 실행 조율
@@ -152,6 +152,20 @@ class TranslationOrchestrator:
             # ═══ Pass 4: Wordplay Localization ═══
             from app.engine.passes.pass_4_wp import run_pass_4
             blocks = await run_pass_4(job, blocks, metadata)
+
+            if job.get("cancelled"):
+                return
+
+            # ═══ Pass 4.5: Semantic Integrity Validator (Module C) ═══
+            from app.engine.passes.pass_4_5_semantic import run_pass_4_5
+            blocks = await run_pass_4_5(job, blocks, metadata)
+
+            if job.get("cancelled"):
+                return
+
+            # ═══ Pass 5.7: Timecode Hygiene Sorter (Module E) ═══
+            from app.engine.passes.pass_5_7_timecode import run_pass_5_7
+            blocks = await run_pass_5_7(job, blocks)
 
             # ═══ 작업 완료 ═══
             job["current_pass"] = "완료"

@@ -2,7 +2,7 @@
 import io
 import re
 
-# [번역 실패: ...] 패턴 — 최종 안전망
+# [번역 실패: ...] 패턴 - 최종 안전망
 _FAIL_PATTERN = re.compile(r'^\[번역\s*실패')
 
 def generate_srt(subtitles: list) -> str:

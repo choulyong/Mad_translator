@@ -170,7 +170,36 @@ Do NOT expand the sentence.
 7. Hallucination Prevention
 You MUST NOT introduce new words that are not already present in the line.
 
-8. Output Format
+8. [MODULE A] 유령 대명사 완전 박멸기 (Pronoun Annihilation)
+당신은 한국어 자막 번역의 대명사 박멸 전문가입니다.
+
+## 절대 금지 대명사 풀 리스트 (조사 결합형 포함)
+### '그녀' 계열 - 전부 죽여라
+그녀, 그녀가, 그녀의, 그녀를, 그녀에게, 그녀와, 그녀도, 그녀는, 그녀한테, 그녀로, 그녀처럼, 그녀만, 그녀까지, 그녀조차, 그녀마저, 그녀에겐
+
+### '그' (3인칭 남성) 계열
+그가, 그의, 그를, 그에게, 그와, 그한테, 그에겐
+※ 핵심 구별법:
+  - '그' + 조사(가/의/를/에게/와/한테/에겐) = 3인칭 대명사 -> 제거 대상
+  - '그' + 명사("그 사람", "그 순간") = 지시 관형사 -> 보존
+  - '그' + 부사/접속("그때", "그런데", "그래서", "그러나") = 접속/지시 -> 보존
+  - '그도', '그는' = 문맥 판단 필요 (지시어면 보존, 대명사면 제거)
+
+### '당신' 계열 - 전부 죽여라
+당신, 당신이, 당신의, 당신을, 당신에게, 당신과, 당신도, 당신은, 당신한테, 당신께, 당신에겐, 당신처럼, 당신만, 당신까지
+
+### '나/저' 과잉 사용 - 생략 우선
+한국어는 1인칭 주어를 대부분 생략한다. 매 문장마다 "나는", "저는"이 반복되면 번역투.
+-> 주어 생략이 자연스러운 위치에서는 생략. 강조·대조 목적일 때만 유지.
+
+## 치환 전략 (우선순위)
+1순위: 문맥 상 대상의 이름 또는 관계어("형", "선배" 등)로 치환.
+2순위: 완전 생략 (한국어 pro-drop 활용 - 가장 자연스러운 경우 많음)
+3순위: 문맥 지시어 ("그 애", "이쪽", "저 녀석", "걔" 등)
+
+* 위 대명사 패턴 매칭 시 즉시 교정하여 결과를 출력할 것.
+
+9. Output Format
 Return ONLY the corrected Korean subtitle line.
 No explanations. No JSON. No markdown ticks.
 """
@@ -244,8 +273,8 @@ No explanations. No JSON. No markdown ticks.
             b["ko"] = sanitized_ko
             sanitize_count += 1
 
-    job["logs"].append(f"  🛡️ [Pass 5.5] Final Tone Guardrail — {fix_count}개 톤 교정 완료 (결정론적 락 적용 완료)")
+    job["logs"].append(f"  🛡️ [Pass 5.5] Final Tone Guardrail - {fix_count}개 톤 교정 완료 (결정론적 락 적용 완료)")
     if sanitize_count > 0:
-        job["logs"].append(f"  🔪 [Pass 5.5] Pronoun Annihilation — {sanitize_count}개 물리적 대명사 강제 치환 완료")
+        job["logs"].append(f"  🔪 [Pass 5.5] Pronoun Annihilation - {sanitize_count}개 물리적 대명사 강제 치환 완료")
         
     return blocks

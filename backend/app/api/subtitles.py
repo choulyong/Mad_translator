@@ -24,7 +24,7 @@ from app.database import save_job_to_db, load_job_from_db
 ws_manager = None
 from app.subtitle_cleaner import clean_subtitle_text, remove_duplicate_blocks
 from app.core.diagnostic import DiagnosticEngine
-from app.core.k_cinematic_prompt import get_v5_qc_prompt, get_universal_relationship_logic
+from app.core.k_cinematic_prompt import get_v6_2_qc_prompt, get_universal_relationship_logic
 from app.services.vertex_ai import VertexTranslator
 from app.services.speaker_identifier import (
     SPEAKER_ID_SYSTEM_PROMPT,
@@ -222,7 +222,7 @@ def _parse_translation_response(raw_content: str, original_blocks: list) -> list
                         print("[ERROR] All JSON parsing attempts failed (including strict=False recovery)")
                         return []
 
-    # 결과 정규화 — Gemini가 {index,text} 또는 {id,ko} 또는 {index,korean_text} 형식으로 응답
+    # 결과 정규화 - Gemini가 {index,text} 또는 {id,ko} 또는 {index,korean_text} 형식으로 응답
     result = []
     for trans in translations:
         if not isinstance(trans, dict):
@@ -257,17 +257,11 @@ logic_gate = LogicGate()
 diagnostic = DiagnosticEngine()
 
 # Vertex AI 클라이언트 (환경변수에서 자동 로드)
-# 초기화 지연 - 실제 API 호출 시점에 생성
-vertex_ai = None
-
-def get_vertex_ai():
-    global vertex_ai
-    if vertex_ai is None:
-        vertex_ai = VertexTranslator()
-    return vertex_ai
+# Vertex AI 클라이언트 — vertex_ai.py 싱글톤 사용 (순환 임포트 방지)
+from app.services.vertex_ai import get_vertex_ai
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Job Store — 백엔드 오케스트레이션 (translate-all)
+# Job Store - 백엔드 오케스트레이션 (translate-all)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _jobs: dict[str, dict] = {}
@@ -343,12 +337,12 @@ class TranslateAllRequest(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# translate_single_batch() — HTTP 없이 직접 호출하는 번역 함수
+# translate_single_batch() - HTTP 없이 직접 호출하는 번역 함수
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def translate_single_batch(blocks: list, context_info: dict) -> list:
     """
-    단일 배치 번역 — HTTP 없이 직접 호출.
+    단일 배치 번역 - HTTP 없이 직접 호출.
     기존 batch-translate 엔드포인트의 핵심 로직 추출.
     Returns: list of {index, text}
     """
@@ -413,7 +407,7 @@ def _compute_max_chars(duration_sec: float, cps_rate: int = 14) -> int:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Postprocess v1 — 의미 보존 후보정 (중복/포맷/♪/대시/문장부호/CPS 줄바꿈)
+# Postprocess v1 - 의미 보존 후보정 (중복/포맷/♪/대시/문장부호/CPS 줄바꿈)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _MUSIC_VERBS_RE = re.compile(r"(재생\s*중|연주됨|연주\s*중|흘러나옴|playing)", re.IGNORECASE)
@@ -426,7 +420,7 @@ def _norm_for_dedup(s: str) -> str:
     t = t.replace("\u2026", "...")  # … ↔ ...
     t = re.sub(r"\s+", "", t)
     t = re.sub(r"[\"'""'']", "", t)
-    t = re.sub(r"[!?.,~\-–—·:;()\[\]{}<>]", "", t)
+    t = re.sub(r"[!?.,~\-–-·:;()\[\]{}<>]", "", t)
     return t
 
 def _fix_music_notes(text: str) -> str:
@@ -492,7 +486,7 @@ def _normalize_dialogue_dashes(text: str) -> str:
                 left = parts[0].strip()
                 right = parts[1].strip()
                 # right가 말처럼 보이면 대화 분리
-                if right and not right.startswith("—"):
+                if right and not right.startswith("-"):
                     new_lines.append(left)
                     new_lines.append("- " + right)
                     continue
@@ -750,7 +744,7 @@ def _normalize_punct_srt(text: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Pass 5.0 — Register Stabilizer (범용 레지스터 고정 후보정)
+# Pass 5.0 - Register Stabilizer (범용 레지스터 고정 후보정)
 # - 의미 불변: "문장 끝말/질문형/요·습니다"만 교정
 # - confirmed_levels(말투 잠금) + char_relations(관계 설명) 기반
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -991,9 +985,9 @@ def _apply_hard_binding(blocks: list) -> list:
     결합된 블록은 _bound_ids에 원본 id 목록을 보존.
     Returns: 결합된 새 blocks 리스트
     """
-    # 접속사 패턴 (영어) — 문장 중간에서 끊기는 경우
+    # 접속사 패턴 (영어) - 문장 중간에서 끊기는 경우
     CONTINUATION_PATTERN = re.compile(
-        r'(\.\.\.|…|—|–|,\s*$|'
+        r'(\.\.\.|…|-|–|,\s*$|'
         r'\b(and|but|or|nor|so|yet|because|although|while|if|when|as|since|however|therefore|meanwhile|then|so that|in order|except|unless|until|whether|though|even though|even if)\s*$)',
         re.IGNORECASE
     )
@@ -1036,7 +1030,7 @@ def _apply_hard_binding(blocks: list) -> list:
 
 def _build_semantic_batches(blocks: list) -> list:
     """
-    시맨틱 배칭 — 장면 전환 기준 20~40 블록 단위로 분할.
+    시맨틱 배칭 - 장면 전환 기준 20~40 블록 단위로 분할.
     Returns: list of {start_idx, end_idx, blocks, scene_break, batch_mood}
     """
     if not blocks:
@@ -1173,7 +1167,7 @@ def _check_qc_needed(qc_blocks: list, confirmed_levels: dict, tone_threshold: fl
 
     # 2. 확정 말투 vs 실제 어미 일치율 체크
     if not confirmed_levels:
-        return True, "confirmed_levels 없음 — QC 실행"
+        return True, "confirmed_levels 없음 - QC 실행"
 
     mismatch_count = 0
     total_locked = 0
@@ -1210,9 +1204,9 @@ def _check_qc_needed(qc_blocks: list, confirmed_levels: dict, tone_threshold: fl
         if match_ratio < tone_threshold:
             return True, f"톤 불일치 {mismatch_count}/{total_locked} ({match_ratio:.0%} < {tone_threshold:.0%})"
         else:
-            return False, f"톤 일치율 {match_ratio:.0%} >= {tone_threshold:.0%} — QC 스킵"
+            return False, f"톤 일치율 {match_ratio:.0%} >= {tone_threshold:.0%} - QC 스킵"
 
-    return True, "샘플 부족 — QC 실행"
+    return True, "샘플 부족 - QC 실행"
 
 
 def _extract_tone_from_batch(blocks: list, existing_memory: list, confirmed_levels: dict = None) -> list:
@@ -1317,7 +1311,7 @@ def _update_confirmed_speech_levels(
 
 def _detect_dedup(blocks: list) -> list:
     """
-    연속 중복 감지 — 강화된 필터 (원문 유사도 + 번역 정확도 함께 검증).
+    연속 중복 감지 - 강화된 필터 (원문 유사도 + 번역 정확도 함께 검증).
     Returns: 중복으로 비워야 할 블록의 인덱스 리스트
     """
     dedup_indices = []
@@ -1819,7 +1813,7 @@ def _enhance_translation_prompt_with_localization(base_prompt: str) -> str:
     enhanced = base_prompt
 
     if localization_section and "한글 의역" not in enhanced:
-        enhanced += f"\n\n[의역 가이드 — 자연스러운 한국어 표현]\n{localization_section}"
+        enhanced += f"\n\n[의역 가이드 - 자연스러운 한국어 표현]\n{localization_section}"
 
     return enhanced
 
@@ -2059,7 +2053,7 @@ _BANMAL_TO_JONDAEMAL_EXT = [
 
 def _apply_postprocess(blocks: list, confirmed_levels: dict = None, char_relations: dict = None) -> dict:
     """
-    Pass 5.1 하드코딩 후처리 — 금기어 치환, 말줄임표 통일, 마침표 제거, 권위 톤 교정, 피압박자 격식체 교정.
+    Pass 5.1 하드코딩 후처리 - 금기어 치환, 말줄임표 통일, 마침표 제거, 권위 톤 교정, 피압박자 격식체 교정.
     Returns: {period_count, expression_count, format_count, auth_drift_count, submissive_formal_count}
     """
     confirmed_levels = confirmed_levels or {}
@@ -2315,7 +2309,7 @@ def _apply_postprocess(blocks: list, confirmed_levels: dict = None, char_relatio
                                 auth_drift_count += 1
                                 changed = True
 
-        # 6. 피압박자 격식체 강제 (Submissive Formal) — confirmed_levels 미설정 fallback
+        # 6. 피압박자 격식체 강제 (Submissive Formal) - confirmed_levels 미설정 fallback
         if speaker and addressee and _is_submissive_relation(speaker, addressee):
             # 해요체 → 하십시오체 치환
             for pattern, replacement in _SUBMISSIVE_FORMAL_PATTERNS:
@@ -2350,7 +2344,7 @@ def _sanitize_subtitle_text(text: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# _detect_side_talk() — 방백/대상 전환 감지 (Micro-Context Switching)
+# _detect_side_talk() - 방백/대상 전환 감지 (Micro-Context Switching)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # 호칭 사전: vocative → 기본 말투 추론용
@@ -2495,7 +2489,7 @@ def _detect_side_talk(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# _run_translation_job() — 백엔드 오케스트레이터 (Pass 1~5.1)
+# _run_translation_job() - 백엔드 오케스트레이터 (Pass 1~5.1)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def _run_translation_job(job_id: str, request: TranslateAllRequest):
@@ -2574,6 +2568,13 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
         translation_rules = "\n".join(translation_rules_lines)
 
         content_rating = meta.get("rated", "")
+
+        # ═══ [Pass 0] Dynamic LORE Extraction ═══
+        if not job.get("cancelled") and not meta.get("lore"):
+            from app.engine.passes.pass_0_lore import run_pass_0_lore
+            lore_json = await run_pass_0_lore(job, blocks, title)
+            job["lore"] = lore_json
+            meta["lore"] = lore_json
 
         # ═══ [Pass 0] Speaker Identification ═══
         # speaker/addressee가 없으면 자동 식별
@@ -2679,7 +2680,7 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
             await _broadcast_job_update(job_id, job)
             emotion_result = _inject_emotion_markers(blocks)
             if emotion_result["marked_count"] > 0:
-                job["logs"].append(f"> [A2] 감정 마커 주입 — {emotion_result['marked_count']}개 감지")
+                job["logs"].append(f"> [A2] 감정 마커 주입 - {emotion_result['marked_count']}개 감지")
                 for emotion, count in emotion_result["emotions_detected"].items():
                     job["logs"].append(f"    {emotion}: {count}개")
             else:
@@ -2690,7 +2691,7 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
         await _broadcast_job_update(job_id, job)
         job["logs"].append(f"> [Pass 1] 시맨틱 배칭 시작...")
 
-        # V2: Hard Binding — ...나 접속사로 끝나는 분절 자막 결합
+        # V2: Hard Binding - ...나 접속사로 끝나는 분절 자막 결합
         blocks_before_binding = len(blocks)
         blocks = _apply_hard_binding(blocks)
         if len(blocks) < blocks_before_binding:
@@ -2836,6 +2837,7 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                 "tone_memory": tone_memory[-50:],
                 "batch_mood": batch.get("batch_mood", ""),
                 "content_rating": content_rating,
+                "lore_json": meta.get("lore"),
             }
 
             job["logs"].append(
@@ -2980,7 +2982,7 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                 f"  ✓ [{batch_idx + 1}/{num_batches}]{retry_label} 완료 (+{batch_count}개, 총 {total_applied}개)"
             )
 
-            # 중간 결과 업데이트 (폴링 시 실시간 반영용) — speaker 포함
+            # 중간 결과 업데이트 (폴링 시 실시간 반영용) - speaker 포함
             job["partial_subtitles"] = [
                 {
                     "id": b.get("id"),
@@ -3025,10 +3027,10 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
         stagger_results: dict[int, bool] = {}
 
         async def staggered_worker(idx: int) -> bool:
-            """Semaphore 기반 병렬 처리 (최대 CONCURRENCY개 동시 — Stagger 제거)"""
+            """Semaphore 기반 병렬 처리 (최대 CONCURRENCY개 동시 - Stagger 제거)"""
             import time as time_module
 
-            # Stagger 이벤트 대기 제거 — Semaphore만으로 동시성 제어
+            # Stagger 이벤트 대기 제거 - Semaphore만으로 동시성 제어
             # LLM 호출은 Semaphore로 동시성 제한
             async with semaphore:
                 if job.get("cancelled"):
@@ -3062,7 +3064,7 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                 progress = 12 + int((completed / num_batches) * 68)
                 job["progress"] = min(progress, 80)
 
-                # 이벤트 루프 yield — health check/polling 응답 가능하게
+                # 이벤트 루프 yield - health check/polling 응답 가능하게
                 await asyncio.sleep(0)
 
             # 완료 신호
@@ -3134,21 +3136,21 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
             failed_ids = [str(b.get("id", "?")) for b in failed_blocks]
             preview = ", ".join(failed_ids[:10])
             suffix = f"... 외 {len(failed_ids) - 10}개" if len(failed_ids) > 10 else ""
-            job["logs"].append(f"  ⚠ [Pass 1] 번역 실패 {len(failed_ids)}개 — ID: {preview}{suffix}")
+            job["logs"].append(f"  ⚠ [Pass 1] 번역 실패 {len(failed_ids)}개 - ID: {preview}{suffix}")
         else:
             job["logs"].append(f"  ✓ [Pass 1] 전체 {len(blocks)}개 블록 번역 완료")
 
-        await asyncio.sleep(0)  # yield — Pass 전환 시 이벤트 루프 응답 보장
+        await asyncio.sleep(0)  # yield - Pass 전환 시 이벤트 루프 응답 보장
 
         # ═══ Pass 1.5: 미번역 구제 (Untranslated Block Recovery) ═══
-        # Pass 1 직후, Pass 2(QC) 이전 실행 — 구제된 블록도 QC를 거침
+        # Pass 1 직후, Pass 2(QC) 이전 실행 - 구제된 블록도 QC를 거침
         if not job.get("cancelled"):
             def _is_untranslated(b: dict) -> bool:
                 ko = b.get("ko", "")
                 return not ko or not any('\uac00' <= c <= '\ud7a3' for c in ko)
 
             def _is_non_speech(en: str) -> bool:
-                """효과음/음악 블록 여부 — 번역 불필요"""
+                """효과음/음악 블록 여부 - 번역 불필요"""
                 en = en.strip()
                 if not en:
                     return True
@@ -3164,7 +3166,7 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
             ]
 
             if untranslated_blocks:
-                job["logs"].append(f"> [Pass 1.5] 미번역 구제 시작 — {len(untranslated_blocks)}개 블록")
+                job["logs"].append(f"> [Pass 1.5] 미번역 구제 시작 - {len(untranslated_blocks)}개 블록")
                 rescue_batch_size = 10
                 rescued = 0
                 for i in range(0, len(untranslated_blocks), rescue_batch_size):
@@ -3203,7 +3205,7 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                     except Exception as rescue_err:
                         job["logs"].append(f"  ⚠ [Pass 1.5] 배치 오류: {str(rescue_err)[:80]}")
 
-                job["logs"].append(f"  ✅ [Pass 1.5] 구제 완료 — {rescued}/{len(untranslated_blocks)}개 복구")
+                job["logs"].append(f"  ✅ [Pass 1.5] 구제 완료 - {rescued}/{len(untranslated_blocks)}개 복구")
             else:
                 job["logs"].append(f"  ✓ [Pass 1.5] 미번역 블록 없음")
 
@@ -3283,7 +3285,7 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
             await _broadcast_job_update(job_id, job)
             translated_blocks = [b for b in blocks if b.get("ko") and b["ko"].strip()]
             if translated_blocks:
-                job["logs"].append(f"> [Pass 2] LLM-as-Judge QC — {len(translated_blocks)}개 블록 교정 중...")
+                job["logs"].append(f"> [Pass 2] LLM-as-Judge QC - {len(translated_blocks)}개 블록 교정 중...")
 
                 qc_batch_size = 30
                 qc_total = math.ceil(len(blocks) / qc_batch_size)
@@ -3298,10 +3300,10 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                     if not any(b.get("ko") and b["ko"].strip() for b in qc_blocks):
                         return 0
 
-                    # V2+V3: Targeting QC — 80% 톤 임계값 기반 선택적 실행
+                    # V2+V3: Targeting QC - 80% 톤 임계값 기반 선택적 실행
                     qc_needed, qc_reason = _check_qc_needed(qc_blocks, confirmed_levels)
                     if not qc_needed:
-                        job["logs"].append(f"    [QC {qi + 1}/{qc_total}] 스킵 — {qc_reason}")
+                        job["logs"].append(f"    [QC {qi + 1}/{qc_total}] 스킵 - {qc_reason}")
                         return 0
 
                     qc_api_blocks = [{
@@ -3341,13 +3343,14 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                             else:
                                 character_relations_str = str(char_relations)
 
-                        system_instruction = get_v5_qc_prompt(
+                        system_instruction = get_v6_2_qc_prompt(
                             title=title,
                             genre=genre,
-                            character_relations=character_relations_str
+                            character_relations=character_relations_str,
+                            lore_json=meta.get("lore")
                         )
                         if translation_rules:
-                            system_instruction += f"\n\n📌 [추가 번역 규칙 — 반드시 준수]\n{translation_rules}"
+                            system_instruction += f"\n\n📌 [추가 번역 규칙 - 반드시 준수]\n{translation_rules}"
 
                         def make_qc_call(attempt=0, max_retries=3):
                             return translator.client.models.generate_content(
@@ -3410,11 +3413,11 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                         if isinstance(r, int):
                             qc_applied += r
                     job["progress"] = 90 + int(((group_end) / qc_total) * 10)
-                    await asyncio.sleep(0)  # yield — QC 그룹 간 이벤트 루프 응답 보장
+                    await asyncio.sleep(0)  # yield - QC 그룹 간 이벤트 루프 응답 보장
 
-                job["logs"].append(f"  ✓ [Pass 2] QC 완료 — {qc_applied}개 교정됨")
+                job["logs"].append(f"  ✓ [Pass 2] QC 완료 - {qc_applied}개 교정됨")
 
-        await asyncio.sleep(0)  # yield — Pass 전환
+        await asyncio.sleep(0)  # yield - Pass 전환
 
         # ═══ B2.5: 화자 톤 일관성 검증 (Character Tone Consistency Validation) ═══
         if not job.get("cancelled"):
@@ -3430,7 +3433,7 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                 if fix_result["failed_indices"]:
                     job["logs"].append(f"    ⚠ [B2.5] {len(fix_result['failed_indices'])}개 수정 실패 (수동 검토 필요)")
             else:
-                job["logs"].append(f"  ✓ [B2.5] 톤 일관성 확인 — 문제 없음")
+                job["logs"].append(f"  ✓ [B2.5] 톤 일관성 확인 - 문제 없음")
 
         # ═══ Pass 3: Final Hard-Fix (Register Stabilizer 통합) ═══
         # Pass 5.0 Register Stabilizer → Pass 2 (QC)에서 이미 검증됨
@@ -3440,14 +3443,14 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
             reg_stats = stabilize_register_blocks(blocks, confirmed_levels, char_relations)
             total_reg_fix = reg_stats["banmal_fixed"] + reg_stats["honorific_fixed"] + reg_stats["formal_fixed"]
             if total_reg_fix > 0:
-                job["logs"].append(f"  ✓ [Pass 3] Final Hard-Fix — {total_reg_fix}개 교정됨")
+                job["logs"].append(f"  ✓ [Pass 3] Final Hard-Fix - {total_reg_fix}개 교정됨")
 
         # ═══ A1: Lexicon 사전 적용 (Pass 3의 일부) ═══
         if not job.get("cancelled"):
             job["current_pass"] = "Pass 3: Lexicon 고정 용어"
             lexicon_result = _apply_lexicon_lookup(blocks)
             if lexicon_result["replacement_count"] > 0:
-                job["logs"].append(f"  ✓ [Pass 3] Lexicon 고정 용어 — {lexicon_result['replacement_count']}개 통일")
+                job["logs"].append(f"  ✓ [Pass 3] Lexicon 고정 용어 - {lexicon_result['replacement_count']}개 통일")
                 if lexicon_result["terms_applied"]:
                     applied_str = ", ".join(lexicon_result["terms_applied"][:5])
                     job["logs"].append(f"    적용 용어: {applied_str}")
@@ -3469,7 +3472,7 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                             block["ko"] = pat.sub(translation, ko)
                             ft_fixed += 1
             if ft_fixed > 0:
-                job["logs"].append(f"  ✓ [Pass 3] 고유명사 표기 통일 — {ft_fixed}개 교정됨")
+                job["logs"].append(f"  ✓ [Pass 3] 고유명사 표기 통일 - {ft_fixed}개 교정됨")
 
         # ═══ Pass 3: 하드코딩 후처리 (Final Hard-Fix에 통합) ═══
         if not job.get("cancelled"):
@@ -3486,23 +3489,23 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                     f"이름표 삭제 {stats['nametag_count']}개" if stats.get("nametag_count") else "",
                     f"당신 치환 {stats['dangshin_count']}개" if stats.get("dangshin_count") else "",
                 ]))
-                job["logs"].append(f"  ✓ [Pass 3] 후처리 완료 — {details} 정리됨")
+                job["logs"].append(f"  ✓ [Pass 3] 후처리 완료 - {details} 정리됨")
 
-        await asyncio.sleep(0)  # yield — Pass 전환
+        await asyncio.sleep(0)  # yield - Pass 전환
 
         # ═══ Pass 4: Wordplay / 농담 현지화 (LLM 기반 관용구 교정) ═══
         if not job.get("cancelled"):
             from app.engine.passes.pass_4_wp import run_pass_4 as _run_pass_4_wp
             blocks = await _run_pass_4_wp(job, blocks, meta)
 
-        await asyncio.sleep(0)  # yield — Pass 전환
+        await asyncio.sleep(0)  # yield - Pass 전환
 
         # ═══ Pass 5: Final Polish (미세 번역투 윤문) ═══
         if not job.get("cancelled"):
             from app.engine.passes.pass_5_polish import run_final_polish
             blocks = await run_final_polish(job, blocks, meta)
 
-        await asyncio.sleep(0)  # yield — Pass 전환
+        await asyncio.sleep(0)  # yield - Pass 전환
 
         # ═══ Pass 5.5: Final Shield (Hard-Fix 물리적 방어막 재실행) ═══
         if not job.get("cancelled"):
@@ -3530,13 +3533,13 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                             block["ko"] = pat.sub(translation, ko)
                             ft_fixed += 1
             if lex_stats['replacement_count'] > 0 or ft_fixed > 0:
-                job["logs"].append(f"  🛡️ [Pass 5.5] 고유명사 침해 방어 — {lex_stats['replacement_count'] + ft_fixed}개 복원됨")
+                job["logs"].append(f"  🛡️ [Pass 5.5] 고유명사 침해 방어 - {lex_stats['replacement_count'] + ft_fixed}개 복원됨")
 
             # 3. Postprocess 후처리 방어 (마침표 등)
             post_stats = _apply_postprocess(blocks, confirmed_levels, char_relations)
             total_clean = post_stats["period_count"] + post_stats["expression_count"] + post_stats["format_count"] + post_stats.get("auth_drift_count", 0) + post_stats.get("submissive_formal_count", 0) + post_stats.get("nametag_count", 0) + post_stats.get("dangshin_count", 0)
             if total_clean > 0:
-                job["logs"].append(f"  🛡️ [Pass 5.5] 후처리 방어 완료 — {total_clean}개 정리됨")
+                job["logs"].append(f"  🛡️ [Pass 5.5] 후처리 방어 완료 - {total_clean}개 정리됨")
 
         # ═══ B3: Expert Hard-coded Overrides (휴먼 터치) ═══
         if not job.get("cancelled"):
@@ -3614,7 +3617,7 @@ async def _run_translation_job(job_id: str, request: TranslateAllRequest):
                             total_score = sqa_data.get("total", 0)
                             comment = sqa_data.get("comment", "")
                             job["quality_score"] = total_score
-                            job["logs"].append(f"  ✅ [AI-SQA] 품질 점수: {total_score}/100 — {comment}")
+                            job["logs"].append(f"  ✅ [AI-SQA] 품질 점수: {total_score}/100 - {comment}")
                         else:
                             job["logs"].append("  ⚠ [AI-SQA] 점수 파싱 실패 (JSON 파싱 후 빈 객체)")
                     except Exception as parse_e:
@@ -3780,7 +3783,7 @@ async def translate_subtitles(request: TranslationRequest):
 
         print(f"[Backend] Parsed {len(parsed_translations)} translations (slash fixed: {slash_fixed_count})")
 
-        # ✅ 후보정(Postprocess v1) — 의미 보존
+        # ✅ 후보정(Postprocess v1) - 의미 보존
         pp_stats = postprocess_translations(parsed_translations, batch_dicts)
         print(f"[Backend] Postprocess stats: {pp_stats}")
 
@@ -3837,7 +3840,7 @@ async def translate_subtitles(request: TranslationRequest):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 번역 오케스트레이션 API — translate-all (Pass 1~5.1 백엔드 일괄 실행)
+# 번역 오케스트레이션 API - translate-all (Pass 1~5.1 백엔드 일괄 실행)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def _broadcast_job_update(job_id: str, job: dict):
@@ -3957,7 +3960,7 @@ async def get_translate_status(job_id: str):
             '⚡': '[PARALLEL]',
             '🎵': '[MUSIC]',
             '•': '-',
-            '—': '-',
+            '-': '-',
             '–': '-',
             '★': '*',
             '☆': '*',
@@ -4029,7 +4032,7 @@ class SpeakerIdRequest(BaseModel):
 @router.post("/identify-speakers")
 async def identify_speakers(request: SpeakerIdRequest):
     """
-    🎭 화자 식별 — 자막 블록별 화자를 Gemini로 식별
+    🎭 화자 식별 - 자막 블록별 화자를 Gemini로 식별
     선택적으로 관계 매트릭스도 함께 생성
     """
     print(f"[Speaker-ID] Identifying speakers for {len(request.blocks)} blocks (title: '{request.title}')")
@@ -4549,7 +4552,7 @@ async def batch_translate_with_validation(request: BatchTranslateWithValidationR
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# QC 후처리 API — 번역 완료 후 품질 교정
+# QC 후처리 API - 번역 완료 후 품질 교정
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class QCPostProcessBlock(BaseModel):
@@ -4573,7 +4576,7 @@ class QCPostProcessRequest(BaseModel):
 def _remove_translationese(text: str) -> str:
     """
     ✅ PASS 3 강화: HUMANIZATION POST FIX
-    규칙 기반 번역투 제거 — LLM이 놓친 번역투 대명사를 잡는 안전망.
+    규칙 기반 번역투 제거 - LLM이 놓친 번역투 대명사를 잡는 안전망.
     대명사 및 영어 직역투(수동태) 번역투를 제거하거나 자연스럽게 교체.
     """
     if not text:
@@ -4655,7 +4658,7 @@ def _remove_translationese(text: str) -> str:
 
 def _remove_casual_periods(text: str) -> str:
     """
-    규칙 기반 마침표 제거 — LLM이 놓친 마침표를 100% 잡는 안전망.
+    규칙 기반 마침표 제거 - LLM이 놓친 마침표를 100% 잡는 안전망.
     반말(구어체) 대사에서 마침표를 제거하고, 존댓말은 유지한다.
     """
     if not text:
@@ -4715,7 +4718,7 @@ def _remove_casual_periods(text: str) -> str:
 @router.post("/qc-postprocess")
 async def qc_postprocess(request: QCPostProcessRequest):
     """
-    🔍 QC 후처리 — 번역 완료 후 마침표/번역투/줄바꿈 교정
+    🔍 QC 후처리 - 번역 완료 후 마침표/번역투/줄바꿈 교정
 
     번역된 자막을 LLM에 보내 3가지 QC 규칙으로 교정 후 반환.
     """
@@ -4740,7 +4743,7 @@ async def qc_postprocess(request: QCPostProcessRequest):
     if request.personas:
         user_parts.append(f"\n[등장인물 말투]\n{request.personas}")
 
-    # 이전 배치 컨텍스트 — 말투 연속성 유지용
+    # 이전 배치 컨텍스트 - 말투 연속성 유지용
     if request.prev_context:
         last_blocks = request.prev_context[-15:]
         ctx_lines = []
@@ -4753,7 +4756,7 @@ async def qc_postprocess(request: QCPostProcessRequest):
                 '까요', '나요', '가요', '지요',
             )) else "[반말]"
             ctx_lines.append(f"  {tag} {ko_text}")
-        user_parts.append(f"\n[이전 배치 — 말투 반드시 이어갈 것]\n" + "\n".join(ctx_lines))
+        user_parts.append(f"\n[이전 배치 - 말투 반드시 이어갈 것]\n" + "\n".join(ctx_lines))
 
     user_parts.append(f"\n다음 번역된 자막을 QC 규칙에 따라 교정하세요:\n\n{source_payload}")
     user_prompt = "\n".join(user_parts)
@@ -4765,13 +4768,14 @@ async def qc_postprocess(request: QCPostProcessRequest):
             relations_text = "\n".join([f"- {k}: {v}" for k, v in request.character_relations.items()])
             character_relations_str = f"등장인물 관계:\n{relations_text}"
 
-    system_instruction = get_v5_qc_prompt(
+    system_instruction = get_v6_2_qc_prompt(
         title=request.title,
         genre=request.genre,
-        character_relations=character_relations_str
+        character_relations=character_relations_str,
+        lore_json=None
     )
     if request.translation_rules:
-        system_instruction += f"\n\n📌 [추가 번역 규칙 — 반드시 준수]\n{request.translation_rules}"
+        system_instruction += f"\n\n📌 [추가 번역 규칙 - 반드시 준수]\n{request.translation_rules}"
 
     try:
         translator = get_vertex_ai()
@@ -4823,7 +4827,7 @@ async def qc_postprocess(request: QCPostProcessRequest):
             print(f"[QC-WARN] Failed to parse qc_results JSON directly: {parse_err}. Falling back to default parser.")
             parsed = _parse_translation_response(raw_content, [b.dict() for b in request.blocks])
 
-        # 규칙 기반 번역투 제거 — LLM이 놓친 "그녀가/그녀의" 등 100% 보정
+        # 규칙 기반 번역투 제거 - LLM이 놓친 "그녀가/그녀의" 등 100% 보정
         translationese_fixed = 0
         for item in parsed:
             if item.get("text"):
@@ -4832,7 +4836,7 @@ async def qc_postprocess(request: QCPostProcessRequest):
                     item["text"] = cleaned
                     translationese_fixed += 1
 
-        # 규칙 기반 마침표 제거 — LLM이 놓친 것 100% 보정 (새로운 remove_periods 함수 사용)
+        # 규칙 기반 마침표 제거 - LLM이 놓친 것 100% 보정 (새로운 remove_periods 함수 사용)
         period_fixed = 0
         for item in parsed:
             if item.get("text"):
@@ -4841,7 +4845,7 @@ async def qc_postprocess(request: QCPostProcessRequest):
                     item["text"] = cleaned
                     period_fixed += 1
 
-        # 말투 급변 교정 — 연속 블록에서 존대↔반말 급변 감지 및 통일
+        # 말투 급변 교정 - 연속 블록에서 존대↔반말 급변 감지 및 통일
         # ⚠️ 화자-청자 관계가 동일하면 존댓말/반말 변경 금지
         speech_flip_fixed = 0
         if parsed and request.prev_context:
@@ -5010,7 +5014,7 @@ def fix_speech_flip(blocks: list, prev_context: list) -> list:
 
     - 이전 블록 말투로統一
     - 화자가 바뀐 경우는 예외 (다른 인물은 다른 말투 가능)
-    - 화자 변경은 "—" 또는 "-" 또는 ":" 로 감지
+    - 화자 변경은 "-" 또는 "-" 또는 ":" 로 감지
     """
     if not blocks or len(blocks) < 2:
         return blocks
@@ -5053,11 +5057,11 @@ def fix_speech_flip(blocks: list, prev_context: list) -> list:
         text = block.get("ko", "") if isinstance(block, dict) else block.get("text", "")
 
         # 화자 변경 감지 (자막에서 화자 구분 패턴)
-        # 패턴: "화자: 대사" 또는 "화자 — 대사" 또는 "- 화자"等形式
+        # 패턴: "화자: 대사" 또는 "화자 - 대사" 또는 "- 화자"等形式
         speaker = None
         speaker_patterns = [
             r'^([^:]+):\s*',  # "화자: 대사"
-            r'^([^—]+)—\s*',  # "화자 — 대사"
+            r'^([^-]+)-\s*',  # "화자 - 대사"
             r'^-\s*([^:]+):\s*',  # "- 화자: 대사"
         ]
 

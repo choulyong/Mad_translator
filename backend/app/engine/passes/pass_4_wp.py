@@ -1,5 +1,5 @@
 """
-Pass 4: Wordplay Localization — 워드플레이 로컬라이제이션
+Pass 4: Wordplay Localization - 워드플레이 로컬라이제이션
 
 역할:
 - 영어 관용구/문화적 참조/말장난 감지
@@ -12,7 +12,7 @@ import math
 from typing import Dict, Any, List, Tuple
 
 from app.api.subtitles import get_vertex_ai
-from app.core.k_cinematic_prompt import get_wordplay_localization_prompt
+from app.core.k_cinematic_prompt import get_v6_2_wordplay_localization_prompt
 
 
 # ═══ 워드플레이 감지 패턴 ═══
@@ -57,6 +57,10 @@ _IDIOM_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r'\bTBT\b', re.I), "cultural"),
     (re.compile(r'\bfyi\b', re.I), "cultural"),
     (re.compile(r'\bsmh\b', re.I), "cultural"),
+    # V6.2 Module D: Foreign Filler
+    (re.compile(r'^\s*(okay|alright|hey|yes|no|oh|well|listen)[\s,.]+', re.I), "foreign_filler"),
+    (re.compile(r'[\s,.]+(okay|alright|hey|yes|no|oh|well|listen)\s*$', re.I), "foreign_filler"),
+    (re.compile(r'\bguys\b', re.I), "foreign_filler"),
     # 직역 위험 표현들
     (re.compile(r'\bgot(ta)? (your|his|her) back\b', re.I), "idiom"),
     (re.compile(r'\bwatch (your|my|his|her) back\b', re.I), "idiom"),
@@ -259,7 +263,7 @@ async def run_pass_4(
     WP_BATCH_SIZE = 20
     wp_total_fixed = 0
 
-    system_prompt = get_wordplay_localization_prompt(title=title, genre=genre)
+    system_prompt = get_v6_2_wordplay_localization_prompt(title=title, genre=genre, lore_json=job.get("lore"))
     translator = get_vertex_ai()
 
     num_batches = math.ceil(len(candidate_indices) / WP_BATCH_SIZE)

@@ -476,7 +476,7 @@ SRT_FORMAT_RULES = """
 
 ⚠️ AI의 임의적인 형태 변형, 대사 병합, 블록 생략을 엄격히 금지한다.
 
-【1. 다중 화자 대사 처리 — 슬래시(/) 절대 금지!】
+【1. 다중 화자 대사 처리 - 슬래시(/) 절대 금지!】
   원문에서 두 명 이상의 화자가 말하는 경우(보통 '-'로 구분됨),
   절대 대사를 슬래시(/)나 공백으로 한 줄에 합치지 마라!
   반드시 줄바꿈 후 하이픈(-)을 사용하여 화자를 분리하라.
@@ -504,7 +504,7 @@ SRT_FORMAT_RULES = """
      여기 진짜 미쳤다
      잠깐만, 케이트, 이리 와 봐
 
-【3. 번역 누락 절대 금지 — 100% 출력 강제!】
+【3. 번역 누락 절대 금지 - 100% 출력 강제!】
   입력된 블록은 단 하나도 빠짐없이 100% 번역해서 출력해야 한다.
   • 중간에 블록을 건너뛰거나 누락하지 마라
   • 짧은 대사(1단어), 감탄사, 신음 소리 등도 반드시 번역
@@ -760,14 +760,14 @@ def get_addon_prompt(
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 """)
 
-    # V5: SRT 포맷 강제 — 최우선 배치
+    # V5: SRT 포맷 강제 - 최우선 배치
     if enable_srt_format:
         parts.append(SRT_FORMAT_RULES)
 
     if genre:
         parts.append(f"【장르】 {genre}\n")
 
-    # V5: 콘텐츠 타입 스위칭 — 장르 직후 배치
+    # V5: 콘텐츠 타입 스위칭 - 장르 직후 배치
     if enable_content_type:
         parts.append(CONTENT_TYPE_SWITCHING)
 
@@ -811,7 +811,7 @@ def get_addon_prompt(
     if enable_ott_standard:
         parts.append(V5_1_OTT_STANDARD_RULES)
 
-    # V6: 마스터 디렉팅 — V5.1 Dry Tone 위에 미세 연출 덧입히기
+    # V6: 마스터 디렉팅 - V5.1 Dry Tone 위에 미세 연출 덧입히기
     parts.append(V6_MASTER_DIRECTING_RULES)
 
     # [보충 M]: 성격→말투 프로필 자동 생성

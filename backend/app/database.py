@@ -126,6 +126,11 @@ def save_job_to_db(job_id: str, job_data: dict):
     """Save job to database"""
     session = get_session()
     try:
+        # Convert numeric timestamps to datetime objects if needed
+        for time_field in ["created_at", "updated_at"]:
+            if time_field in job_data and isinstance(job_data[time_field], (int, float)):
+                job_data[time_field] = datetime.fromtimestamp(job_data[time_field])
+
         # Check if job exists
         existing = session.query(TranslationJob).filter(TranslationJob.job_id == job_id).first()
 

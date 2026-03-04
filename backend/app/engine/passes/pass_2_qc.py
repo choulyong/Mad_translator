@@ -1,5 +1,5 @@
 """
-Pass 2: QC & Deduplication — 품질 검증 및 중복 제거
+Pass 2: QC & Deduplication - 품질 검증 및 중복 제거
 
 역할:
 - 중복 자막 감지 및 재번역
@@ -26,7 +26,7 @@ from app.api.subtitles import (
     _remove_translationese,
     remove_periods,
     get_vertex_ai,
-    get_v5_qc_prompt,
+    get_v6_2_qc_prompt,
 )
 
 
@@ -232,10 +232,10 @@ async def run_pass_2(
             # QC 필요 여부 판단
             qc_needed, qc_reason = check_qc_needed(translated_blocks, confirmed_levels)
             if not qc_needed:
-                job["logs"].append(f"  ℹ [QC] 스킵 — {qc_reason}")
+                job["logs"].append(f"  ℹ [QC] 스킵 - {qc_reason}")
                 return blocks
 
-            job["logs"].append(f"> [Pass 2] LLM-as-Judge QC — {len(translated_blocks)}개 블록 교정 중...")
+            job["logs"].append(f"> [Pass 2] LLM-as-Judge QC - {len(translated_blocks)}개 블록 교정 중...")
 
             qc_batch_size = 30
             qc_total = math.ceil(len(blocks) / qc_batch_size)
@@ -271,11 +271,12 @@ async def run_pass_2(
                         else str(character_relations) if character_relations
                         else ""
                     )
-                    system_instruction = get_v5_qc_prompt(
+                    system_instruction = get_v6_2_qc_prompt(
                         title=title,
                         genre=genre,
                         character_relations=relations_str,
                         confirmed_speech_levels=confirmed_levels,
+                        lore_json=job.get("lore")
                     )
 
                     def make_qc_call(attempt=0, max_retries=3):
@@ -333,7 +334,7 @@ async def run_pass_2(
                         qc_applied += r
                 job["progress"] = 90 + int(((group_end) / qc_total) * 5)
 
-            job["logs"].append(f"  ✓ [Pass 2] QC 완료 — {qc_applied}개 교정됨")
+            job["logs"].append(f"  ✓ [Pass 2] QC 완료 - {qc_applied}개 교정됨")
 
     job["progress"] = 95
     job["logs"].append("> [Pass 2] 완료")

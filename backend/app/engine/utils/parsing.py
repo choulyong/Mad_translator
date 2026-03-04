@@ -1,5 +1,5 @@
 """
-Parsing Utilities — JSON 정제 및 파싱
+Parsing Utilities - JSON 정제 및 파싱
 
 역할:
 - JSON 문자열 정제 (제어 문자 이스케이프, 문법 수정)
@@ -167,7 +167,7 @@ def parse_translation_response(raw_content: str, original_blocks: list) -> List[
                         print("[ERROR] All JSON parsing attempts failed (including strict=False recovery)")
                         return []
 
-    # 결과 정규화 — Gemini가 {index,text} 또는 {id,ko} 또는 {index,korean_text} 형식으로 응답
+    # 결과 정규화 - Gemini가 {index,text} 또는 {id,ko} 또는 {index,korean_text} 형식으로 응답
     result = []
     for trans in translations:
         if not isinstance(trans, dict):

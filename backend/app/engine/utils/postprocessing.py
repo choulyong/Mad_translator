@@ -1,5 +1,5 @@
 """
-Postprocessing Utilities — 번역 후 텍스트 정리 및 보정
+Postprocessing Utilities - 번역 후 텍스트 정리 및 보정
 
 역할:
 - 음악 표기 정리 (♪)
@@ -25,7 +25,7 @@ def norm_for_dedup(s: str) -> str:
     t = t.replace("\u2026", "...")  # … ↔ ...
     t = re.sub(r"\s+", "", t)
     t = re.sub(r"[\"'""'']", "", t)
-    t = re.sub(r"[!?.,~\-–—·:;()\[\]{}<>]", "", t)
+    t = re.sub(r"[!?.,~\-–-·:;()\[\]{}<>]", "", t)
     return t
 
 
@@ -92,7 +92,7 @@ def normalize_dialogue_dashes(text: str) -> str:
                 left = parts[0].strip()
                 right = parts[1].strip()
                 # right가 말처럼 보이면 대화 분리
-                if right and not right.startswith("—"):
+                if right and not right.startswith("-"):
                     new_lines.append(left)
                     new_lines.append("- " + right)
                     continue

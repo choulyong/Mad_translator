@@ -1,5 +1,5 @@
 """
-Pass 0.5: Dynamic Relationship Mapper — 관계 매트릭스 자동 추출
+Pass 0.5: Dynamic Relationship Mapper - 관계 매트릭스 자동 추출
 
 역할:
 - 자막에서 화자 간 관계 자동 감지

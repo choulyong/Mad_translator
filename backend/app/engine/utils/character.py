@@ -1,5 +1,5 @@
 """
-Character Utilities — 화자 관계 및 호칭 감지
+Character Utilities - 화자 관계 및 호칭 감지
 
 역할:
 - 호칭(vocative) 패턴 감지

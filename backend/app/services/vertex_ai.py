@@ -11,7 +11,7 @@ from app.core.k_cinematic_prompt import (
     get_universal_master_translation_prompt,
     build_universal_context,
     get_universal_relationship_logic,
-    get_v5_qc_prompt,
+    get_v6_2_qc_prompt,
     get_relationship_extraction_prompt,
     parse_relationship_matrix,
 )
@@ -449,7 +449,7 @@ class VertexTranslator:
 {speech_text}
 """
 
-        # V2+V3: XML 격리 포맷 — <context>(참조용)와 <target>(번역용)을 물리적으로 분리
+        # V2+V3: XML 격리 포맷 - <context>(참조용)와 <target>(번역용)을 물리적으로 분리
         # 인덱스 밀림 현상과 컨텍스트 번역 오류를 원천 차단
         prev_context = context_info.get('prev_context', [])
         context_section = ""
@@ -486,7 +486,7 @@ class VertexTranslator:
         # V3 통합 프롬프트 조립 (3모듈: k_cinematic + speech + supplementary)
         # ═══════════════════════════════════════════════════════════
 
-        # 1. 말투 일관성 (speech_enforcement — 유일한 V2 생존 모듈)
+        # 1. 말투 일관성 (speech_enforcement - 유일한 V2 생존 모듈)
         confirmed_speech_text = format_confirmed_speech(confirmed_speech) if confirmed_speech else ""
         speech_enforcement = get_speech_enforcement_for_translation(
             previous_context=confirmed_speech_text,
@@ -520,7 +520,8 @@ class VertexTranslator:
             character_bible=character_bible,
             previous_context_summary=previous_context_summary,
             story_context=story_context,
-            character_relations=character_relations_str
+            character_relations=character_relations_str,
+            lore_json=context_info.get("lore_json")
         )
 
         # V3 Final: 마스터 시스템 프롬프트 (최상위) + Universal Master + 동적 보충 규칙
@@ -740,7 +741,7 @@ HARD CONSTRAINTS (do not violate):
 - Do NOT merge/split subtitles. Keep 1 output per input id. Cross-line merging is FORBIDDEN.
 - Do NOT output diagnostic text, placeholders, error strings, or meta-markers. Output translation only.
 
-You are not only translating — you are rewriting dialogue
+You are not only translating - you are rewriting dialogue
 to sound like natural Korean spoken by film characters.
 
 After translating each subtitle, internally evaluate:
@@ -852,7 +853,7 @@ If a line contains puns, wordplay, humorous names, rhymes, alliteration, or a jo
                 }
             )
 
-        # 재시도 로직으로 API 호출 — run_in_executor로 이벤트 루프 블로킹 방지
+        # 재시도 로직으로 API 호출 - run_in_executor로 이벤트 루프 블로킹 방지
         import asyncio as _asyncio
         loop = _asyncio.get_event_loop()
         response, error = await loop.run_in_executor(
@@ -958,3 +959,15 @@ If a line contains puns, wordplay, humorous names, rhymes, alliteration, or a jo
                 "model": self.model,
                 "error": str(e)
             }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 싱글톤 접근자 (순환 임포트 방지용 — pass_0_lore 등에서 직접 사용)
+# ═══════════════════════════════════════════════════════════════════════════════
+_vertex_ai_instance = None
+
+def get_vertex_ai() -> VertexTranslator:
+    global _vertex_ai_instance
+    if _vertex_ai_instance is None:
+        _vertex_ai_instance = VertexTranslator()
+    return _vertex_ai_instance

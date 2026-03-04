@@ -80,8 +80,8 @@ def _generate_base_dataset_samples() -> List[Dict[str, Any]]:
         {
             "id": "s2_002",
             "scene": "Police Station - Briefing",
-            "english": "But sir, I could really help with—",
-            "korean": "하지만 사장님, 저는 정말 도움이 될 수 있어요—",
+            "english": "But sir, I could really help with-",
+            "korean": "하지만 사장님, 저는 정말 도움이 될 수 있어요-",
             "character": "Judy Hopps",
             "tone": "formal_polite, hopeful",
             "formality": "formal",
